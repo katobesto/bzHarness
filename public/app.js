@@ -231,7 +231,7 @@ function openToolDetail(id) {
   if (row && row.parentElement === chatEl) chatEl.insertBefore(d, row.nextSibling);
   else chatEl.append(d);
   highlightIn(d);
-  scrollBottom();
+  d.scrollIntoView({ block: "nearest" });
 }
 
 function refreshToolDetail(id) {
