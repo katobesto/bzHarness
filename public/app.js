@@ -236,10 +236,15 @@ function renderMessage(m) {
   }
 }
 
+const SPARK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/><circle cx="12" cy="12" r="3.2"/></svg>';
+
 function showWelcome(s) {
   const d = document.createElement("div");
   d.className = "welcome";
-  d.innerHTML = `<h2>Sesión: ${esc(s.name)}</h2><p class="mono">Sandbox: ${esc(s.workdir)}</p><p>Todo lo que el agente cree o ejecute en esta sesión queda confinado en esa carpeta.</p>`;
+  d.innerHTML = `
+    <div class="w-sand"><span class="w-badge">sandbox</span><span class="w-path mono" title="${esc(s.workdir)}">${esc(s.workdir)}</span></div>
+    <h2>${esc(s.name)}</h2>
+    <p>Todo lo que el agente cree o ejecute en esta sesión queda confinado en la carpeta de trabajo. El harness creará <span class="mono">.bzharness/</span> dentro de ella.</p>`;
   chatEl.append(d);
 }
 
@@ -582,12 +587,22 @@ async function init() {
       chatEl.innerHTML = "";
       const d = document.createElement("div");
       d.className = "welcome";
-      d.innerHTML = `<h2>bzHarness</h2><p>Crea una sesión eligiendo su carpeta de trabajo (sandbox) para empezar.</p>`;
+      d.innerHTML = `
+        <div class="w-logo" aria-hidden="true">${SPARK}</div>
+        <h2>bzHarness</h2>
+        <p>Agente LLM con herramientas — shell, ficheros y búsqueda — confinado en un sandbox por sesión.</p>`;
       const btn = document.createElement("button");
       btn.className = "btn primary";
-      btn.textContent = "+ Nueva sesión";
+      btn.textContent = "Nueva sesión";
       btn.onclick = openNewSessionModal;
       d.append(btn);
+      const steps = document.createElement("div");
+      steps.className = "w-steps";
+      steps.innerHTML = `
+        <div class="w-step"><span class="n">1</span><b>Configura el LLM</b><span>Base URL OpenAI-compatible, API key y modelo.</span></div>
+        <div class="w-step"><span class="n">2</span><b>Crea una sesión</b><span>Elige la carpeta de trabajo: será el sandbox del agente.</span></div>
+        <div class="w-step"><span class="n">3</span><b>Chatea</b><span>El agente ejecuta comandos y edita ficheros dentro del sandbox.</span></div>`;
+      d.append(steps);
       chatEl.append(d);
     }
   } catch (e) {

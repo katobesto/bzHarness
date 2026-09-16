@@ -4,31 +4,51 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>bzHarness</title>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="vendor/inter.css" />
   <link rel="stylesheet" href="vendor/hljs-github-dark.min.css" />
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <header>
-    <div class="brand">bz<span>harness</span></div>
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/><circle cx="12" cy="12" r="3.2"/></svg>
+      </span>
+      bz<span>harness</span>
+    </div>
     <div class="hdr-right">
       <div class="model-badge" id="modelBadge" title="">—</div>
-      <button id="btnConfig" class="btn ghost">Configuración</button>
+      <button id="btnConfig" class="btn ghost">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 1 1 4 0v.09c0 .66.39 1.25 1 1.51a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87c.26.61.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg>
+        Configuración
+      </button>
     </div>
   </header>
 
   <div class="layout">
     <aside>
-      <button id="btnNewSession" class="btn primary wide">+ Nueva sesión</button>
+      <button id="btnNewSession" class="btn primary wide">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        Nueva sesión
+      </button>
+      <div class="aside-label">Sesiones</div>
       <div id="sessionList"></div>
     </aside>
 
     <main>
       <div id="chat" class="chat"></div>
-      <div class="composer">
-        <textarea id="input" rows="2" placeholder="Escribe un mensaje… (Enter envía, Shift+Enter salto de línea)"></textarea>
-        <div class="composer-actions">
-          <button id="btnStop" class="btn danger" disabled>Parar</button>
-          <button id="btnSend" class="btn primary" disabled>Enviar</button>
+      <div class="composer-wrap">
+        <div class="composer">
+          <textarea id="input" rows="2" placeholder="Pregunta al agente…"></textarea>
+          <div class="composer-actions">
+            <span class="composer-hint">Enter envía · Shift+Enter salto de línea</span>
+            <button id="btnStop" class="icon-btn stop" title="Parar ejecución" disabled>
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/></svg>
+            </button>
+            <button id="btnSend" class="send-btn" title="Enviar" disabled>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+            </button>
+          </div>
         </div>
       </div>
     </main>
@@ -38,20 +58,24 @@
   <div class="modal" id="modalNew" hidden>
     <div class="modal-box">
       <h2>Nueva sesión</h2>
-      <label>Nombre (opcional)
-        <input id="nsName" placeholder="p.ej. mi-proyecto" />
+      <p class="modal-sub">Cada sesión trabaja en su propia carpeta (sandbox).</p>
+      <label>Nombre
+        <input id="nsName" placeholder="opcional, p. ej. mi-proyecto" />
       </label>
       <label>Carpeta de trabajo (sandbox)
         <div class="row">
           <input id="nsWorkdir" class="mono" placeholder="C:\ruta\absoluta" />
-          <button id="nsBrowse" class="btn ghost">Examinar</button>
+          <button id="nsBrowse" class="btn ghost">Examinar…</button>
         </div>
       </label>
       <div id="nsPresets" class="chips"></div>
       <label>Modelo
         <select id="nsModel"></select>
       </label>
-      <p class="hint">Todo lo que el agente cree o ejecute en esta sesión queda confinado en esa carpeta. El harness creará <span class="mono">.bzharness/</span> dentro de ella.</p>
+      <div class="notice">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6z"/><path d="M9.5 12l1.8 1.8 3.2-3.6"/></svg>
+        Todo lo que el agente cree o ejecute en esta sesión queda confinado en esa carpeta. El harness creará <span class="mono">.bzharness/</span> dentro de ella.
+      </div>
       <div class="modal-actions">
         <button class="btn ghost" data-close>Cancelar</button>
         <button id="nsCreate" class="btn primary">Crear sesión</button>
@@ -62,46 +86,70 @@
   <!-- Configuración -->
   <div class="modal" id="modalConfig" hidden>
     <div class="modal-box wide">
-      <h2>Configuración (LLM + harness)</h2>
-      <div class="grid2">
-        <label>Base URL (OpenAI-compatible)
-          <input id="cfBaseUrl" class="mono" />
-        </label>
-        <label>API key
-          <input id="cfApiKey" type="password" class="mono" autocomplete="off" />
-        </label>
-        <label>Modelo (auto = detectar vía /v1/models)
-          <input id="cfModel" list="modelList" class="mono" />
-          <datalist id="modelList"></datalist>
-        </label>
-        <label>Temperature
-          <input id="cfTemp" type="number" step="0.1" min="0" max="2" />
-        </label>
-        <label>Máx. tokens de contexto
-          <input id="cfMaxCtx" type="number" />
-        </label>
-        <label>Máx. tokens de salida
-          <input id="cfMaxOut" type="number" />
-        </label>
-        <label>Timeout de comandos (ms)
-          <input id="cfShellTimeout" type="number" />
-        </label>
-        <label class="check">
-          <input id="cfShellApproval" type="checkbox" /> Aprobar comandos shell manualmente
-        </label>
-        <label class="check">
-          <input id="cfShowThinking" type="checkbox" /> Mostrar cadena de pensamiento (think)
-        </label>
-        <label>Carpeta de trabajo por defecto
-          <input id="cfDefaultWorkdir" class="mono" />
-        </label>
-        <label>Puerto (requiere reiniciar el proceso)
-          <input id="cfPort" type="number" disabled />
-        </label>
-        <label>Presets de carpeta de trabajo (uno por línea)
+      <h2>Configuración</h2>
+      <p class="modal-sub">Proveedor LLM y comportamiento del harness.</p>
+
+      <div class="cfg-section">
+        <h3>Proveedor LLM <span class="cfg-tag">OpenAI-compatible</span></h3>
+        <div class="form-grid">
+          <label class="span2">Base URL
+            <input id="cfBaseUrl" class="mono" placeholder="https://api.openrouter.ai/v1" />
+          </label>
+          <label>API key
+            <input id="cfApiKey" type="password" class="mono" autocomplete="off" />
+          </label>
+          <label>Modelo <span class="field-hint">auto = detectar vía /v1/models</span>
+            <input id="cfModel" list="modelList" class="mono" />
+            <datalist id="modelList"></datalist>
+          </label>
+        </div>
+      </div>
+
+      <div class="cfg-section">
+        <h3>Límites y muestreo</h3>
+        <div class="form-grid nums">
+          <label>Máx. tokens de contexto
+            <input id="cfMaxCtx" type="number" min="0" step="1000" />
+          </label>
+          <label>Máx. tokens de salida
+            <input id="cfMaxOut" type="number" min="0" step="256" />
+          </label>
+          <label>Temperature
+            <input id="cfTemp" type="number" step="0.1" min="0" max="2" />
+          </label>
+        </div>
+      </div>
+
+      <div class="cfg-section">
+        <h3>Sandbox y shell</h3>
+        <div class="form-grid">
+          <label class="span2 mono">Carpeta de trabajo por defecto
+            <input id="cfDefaultWorkdir" class="mono" />
+          </label>
+          <label>Timeout de comandos (ms)
+            <input id="cfShellTimeout" type="number" min="0" step="1000" />
+          </label>
+          <label>Puerto <span class="field-hint">requiere reiniciar</span>
+            <input id="cfPort" type="number" disabled />
+          </label>
+        </div>
+        <div class="toggle-row">
+          <label class="toggle">
+            <input id="cfShellApproval" type="checkbox" />
+            <span class="switch" aria-hidden="true"></span>
+            <span class="toggle-txt">Aprobar comandos shell manualmente</span>
+          </label>
+          <label class="toggle">
+            <input id="cfShowThinking" type="checkbox" />
+            <span class="switch" aria-hidden="true"></span>
+            <span class="toggle-txt">Mostrar cadena de pensamiento (think)</span>
+          </label>
+        </div>
+        <label>Presets de carpeta de trabajo <span class="field-hint">uno por línea</span>
           <textarea id="cfPresets" class="mono" rows="3"></textarea>
         </label>
       </div>
+
       <div class="modal-actions">
         <button class="btn ghost" data-close>Cancelar</button>
         <button id="cfSave" class="btn primary">Guardar</button>
@@ -112,9 +160,17 @@
   <!-- Aprobación de comandos -->
   <div class="modal" id="modalApproval" hidden>
     <div class="modal-box">
-      <h2>Aprobar comando</h2>
+      <div class="ap-head">
+        <span class="ap-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6z"/><path d="M12 8v4M12 15h.01"/></svg>
+        </span>
+        <div>
+          <h2>Aprobar comando</h2>
+          <p class="modal-sub">El agente quiere ejecutar este comando en el sandbox.</p>
+        </div>
+      </div>
       <pre id="apCommand" class="mono apcmd"></pre>
-      <div class="modal-actions">
+      <div class="modal-actions spread">
         <button id="apDeny" class="btn danger">Rechazar</button>
         <button id="apApprove" class="btn primary">Ejecutar</button>
       </div>
