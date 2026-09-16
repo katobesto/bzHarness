@@ -270,7 +270,7 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; background:
 
 .welcome {
   max-width: 560px;
-  margin: 9vh auto 0;
+  margin: 9vh auto 24px;
   text-align: center;
   padding: 40px 32px;
   border: 1px solid var(--border-soft);
