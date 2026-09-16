@@ -160,7 +160,7 @@ const TOOL_ICONS = {
 };
 
 const toolStore = new Map();
-let popupToolId = null;
+let openToolId = null;
 
 function addToolChip(ev, row) {
   row.hidden = false;
@@ -171,7 +171,10 @@ function addToolChip(ev, row) {
   const hint = ev.name === "shell_exec" ? ev.args?.command : (ev.args?.path || ev.args?.pattern || "");
   chip.title = (ev.name + (hint ? " · " + hint : "")).slice(0, 300);
   chip.innerHTML = TOOL_ICONS[meta.icon] + "<span>" + esc(meta.label) + "</span>";
-  chip.onclick = () => openToolPopup(ev.id);
+  chip.onclick = () => {
+    if (openToolId === ev.id) closeToolDetail();
+    else openToolDetail(ev.id);
+  };
   toolStore.set(ev.id, { name: ev.name, args: ev.args, output: undefined, ok: null });
   row.append(chip);
   scrollBottom();
@@ -186,15 +189,15 @@ function updateToolChip(ev) {
     e.ok = ev.ok;
   }
   chip.classList.add(ev.ok ? "ok" : "fail");
-  if (popupToolId === ev.id && !$("#modalTool").hidden) openToolPopup(ev.id);
+  if (openToolId === ev.id) refreshToolDetail(ev.id);
 }
 
-function openToolPopup(id) {
-  const e = toolStore.get(id);
-  if (!e) return;
-  popupToolId = id;
+function detailHead(e) {
   const meta = TOOL_META[e.name] || { label: e.name, icon: "read" };
-  $("#toolTitle").innerHTML = TOOL_ICONS[meta.icon] + `<span class="tverb">${esc(meta.label)}</span> · ${esc(e.name)}`;
+  return `<div class="td-head">${TOOL_ICONS[meta.icon]}<span class="tverb">${esc(meta.label)}</span><span class="td-name">${esc(e.name)}</span></div>`;
+}
+
+function detailBody(e) {
   let html = "";
   if (e.name === "shell_exec" && e.args) {
     html += `<div class="tsec">Comando</div><pre class="toolpre"><code data-lang="bash">${esc(e.args.command ?? "")}</code></pre>`;
@@ -211,9 +214,40 @@ function openToolPopup(id) {
   }
   if (e.ok === null) html += `<div class="tsec">Salida</div><pre class="toolpre"><span class="typing">… en curso</span></pre>`;
   else html += `<div class="tsec">Salida</div><pre class="toolpre ${e.ok ? "ok" : "fail"}">${esc(e.output ?? "")}</pre>`;
-  $("#toolBody").innerHTML = html || `<pre class="toolpre"></pre>`;
-  highlightIn($("#toolBody"));
-  openModal("#modalTool");
+  return html || `<pre class="toolpre"></pre>`;
+}
+
+function openToolDetail(id) {
+  const e = toolStore.get(id);
+  if (!e) return;
+  closeToolDetail();
+  openToolId = id;
+  const d = document.createElement("div");
+  d.className = "tooldetail";
+  d.dataset.id = id;
+  d.innerHTML = detailHead(e) + detailBody(e);
+  const chip = chatEl.querySelector(`.toolchip[data-id="${CSS.escape(id)}"]`);
+  const row = chip && chip.parentElement ? chip.parentElement : null;
+  if (row && row.parentElement === chatEl) chatEl.insertBefore(d, row.nextSibling);
+  else chatEl.append(d);
+  highlightIn(d);
+  scrollBottom();
+}
+
+function refreshToolDetail(id) {
+  const e = toolStore.get(id);
+  const d = chatEl.querySelector(`.tooldetail[data-id="${CSS.escape(id)}"]`);
+  if (!e || !d) return;
+  d.innerHTML = detailHead(e) + detailBody(e);
+  highlightIn(d);
+}
+
+function closeToolDetail() {
+  if (openToolId) {
+    const d = chatEl.querySelector(`.tooldetail[data-id="${CSS.escape(openToolId)}"]`);
+    if (d) d.remove();
+  }
+  openToolId = null;
 }
 
 function renderMessage(m) {
@@ -292,27 +326,28 @@ async function sendMessage() {
   const w = chatEl.querySelector(".welcome");
   if (w) w.remove();
   addUserBubble(text);
-  const bubble = addAssistantBubble("");
+  let bubble = addAssistantBubble("");
   bubble.querySelector(".tcontent").innerHTML = '<span class="typing">…</span>';
-  const chipsRow = document.createElement("div");
-  chipsRow.className = "toolchips";
-  chipsRow.hidden = true;
-  chatEl.append(chipsRow);
+  let chipsRow = null;
+  let textSinceRow = false;
+  let segText = "";
+  let thinkSeg = "";
   busy = true;
   updateButtons();
-  let raw = "";
-  let thinkRaw = "";
   let raf = null;
   let finalized = false;
   const paint = () => {
     raf = null;
-    bubble.querySelector(".tcontent").innerHTML = inlineMd(raw) || '<span class="typing">…</span>';
+    bubble.querySelector(".tcontent").innerHTML = inlineMd(segText) || '<span class="typing">…</span>';
     scrollBottom();
   };
   const finalizeTurn = () => {
     if (finalized) return;
     finalized = true;
-    bubble.querySelector(".tcontent").innerHTML = raw ? fullMD(raw) : '<span class="typing">…</span>';
+    const tc = bubble.querySelector(".tcontent");
+    const box = bubble.querySelector(".thinkbox");
+    if (!segText && box.hidden) bubble.remove();
+    else tc.innerHTML = segText ? fullMD(segText) : "";
     scrollBottom();
   };
   try {
@@ -334,20 +369,37 @@ async function sendMessage() {
               ? ev.content.map((p) => (typeof p === "string" ? p : p?.text ?? "")).join("")
               : ev.content?.text ?? "";
         if (t) {
-          raw += t;
+          segText += t;
+          textSinceRow = true;
           if (!raf) raf = requestAnimationFrame(paint);
         }
       },
       think: (ev) => {
         const t = typeof ev.content === "string" ? ev.content : (ev.content?.text ?? "");
         if (!t) return;
-        thinkRaw += t;
+        thinkSeg += t;
         const box = bubble.querySelector(".thinkbox");
         if (box.hidden) box.hidden = false;
-        box.textContent = thinkRaw;
+        box.textContent = thinkSeg;
         scrollBottom();
       },
-      tool_call: (ev) => addToolChip(ev, chipsRow),
+      tool_call: (ev) => {
+        if (chipsRow === null || textSinceRow) {
+          const tc = bubble.querySelector(".tcontent");
+          const box = bubble.querySelector(".thinkbox");
+          if (!segText && box.hidden) bubble.remove();
+          else if (segText) tc.innerHTML = fullMD(segText);
+          segText = "";
+          thinkSeg = "";
+          textSinceRow = false;
+          chipsRow = document.createElement("div");
+          chipsRow.className = "toolchips";
+          chatEl.append(chipsRow);
+          bubble = addAssistantBubble("");
+          bubble.querySelector(".tcontent").innerHTML = "";
+        }
+        addToolChip(ev, chipsRow);
+      },
       tool_result: updateToolChip,
       approval_request: (ev) => {
         approvalId = ev.id;
@@ -355,8 +407,8 @@ async function sendMessage() {
         openModal("#modalApproval");
       },
       retry: (ev) => {
-        raw = "";
-        thinkRaw = "";
+        segText = "";
+        thinkSeg = "";
         const box = bubble.querySelector(".thinkbox");
         box.hidden = true;
         box.textContent = "";
@@ -418,6 +470,7 @@ function renderSessionList(list) {
         await api(`/api/sessions/${s.id}`, { method: "DELETE" });
         if (currentId === s.id) {
           currentId = null;
+          closeToolDetail();
           chatEl.innerHTML = "";
         }
         refreshSessions().then((l) => l.length && selectSession(l[0].id));
@@ -440,6 +493,7 @@ async function selectSession(id) {
     const s = await api(`/api/sessions/${id}`);
     currentId = id;
     await refreshSessions();
+    closeToolDetail();
     chatEl.innerHTML = "";
     showWelcome(s);
     for (const m of s.messages || []) renderMessage(m);

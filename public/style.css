@@ -418,7 +418,7 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; background:
 .err { color: var(--err); font-weight: 600; }
 
 /* chips de herramientas */
-.toolchips { display: flex; flex-wrap: wrap; gap: 6px; margin: -8px 0 20px; }
+.toolchips { display: flex; flex-wrap: wrap; gap: 6px; margin: -8px auto 20px; }
 .toolchip {
   display: inline-flex;
   align-items: center;
@@ -441,9 +441,20 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; background:
 .toolchip.fail { color: var(--err); border-color: rgba(255, 109, 109, 0.4); background: var(--err-soft); }
 .toolchip.fail:hover { color: var(--err); }
 
-#toolTitle { display: flex; align-items: center; gap: 8px; }
-#toolTitle svg { width: 15px; height: 15px; color: var(--accent); }
-#toolTitle .tverb { font-weight: 650; }
+/* detalle de herramienta inline */
+.tooldetail {
+  margin: 0 auto 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-1);
+  padding: 12px 14px;
+}
+.td-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 13px; }
+.td-head svg { width: 14px; height: 14px; color: var(--accent); flex: 0 0 auto; }
+.td-head .tverb { font-weight: 650; }
+.td-head .td-name { font-family: var(--mono); font-size: 11px; color: var(--faint); }
 .tsec {
   margin-top: 16px;
   font-size: 10.5px;

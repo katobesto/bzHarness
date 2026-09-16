@@ -91,12 +91,12 @@ Flujo de un turno:
 - `contain.js`: ver sandbox.
 
 ### `public/` — UI (sin framework)
-- `index.html`: layout (aside de sesiones + chat + composer), modales: nueva sesión (solo **ruta + Examinar + presets** — el explorador de carpetas web fue retirado; `Examinar` abre el selector nativo de Windows vía `/api/pick-dir`), configuración (incluye el check **"Mostrar cadena de pensamiento"**), aprobación de comandos, popup de tool.
+- `index.html`: layout (aside de sesiones + chat + composer), modales: nueva sesión (solo **ruta + Examinar + presets** — el explorador de carpetas web fue retirado; `Examinar` abre el selector nativo de Windows vía `/api/pick-dir`), configuración (incluye el check **"Mostrar cadena de pensamiento"**), aprobación de comandos.
 - `vendor/` (vendado, sin CDN en runtime): `marked` (markdown), `highlight.js` + tema GitHub Dark, `DOMPurify`.
 - `app.js` (ESM, ~600 líneas):
   - `consumeSSE` (parsea bloques `data: …` separados por `\n\n`) y manejadores: `token` (pinta con `inlineMd` —render rápido—), `think` (rellena la `.thinkbox` del globo), `tool_call`/`tool_result` (chips), `approval_request` (modal), `retry`, `error` (burbuja + `+ info`), `done` (al terminar el turno, `finalizeTurn` re-renderiza el globo con **`fullMD`**: marked + DOMPurify + highlight.js).
-  - **Chips de tools**: píldoras `icono + verbo` (Read/Write/Edit/Shell/Glob/Grep) que flotan en horizontal; clic → **popup** `#modalTool` con args/salida. `shell_exec` muestra el **comando** como bloque bash resaltado; `file_write` muestra **ruta + contenido en bruto** (con resaltado según extensión) en lugar del JSON.
-  - `toolStore` (Map id → {name,args,output,ok}) alimenta el popup y se actualiza en vivo si está abierto.
+- **Chips de tools**: píldoras `icono + verbo` (Read/Write/Edit/Shell/Glob/Grep) que flotan en horizontal; clic → **detalle inline** (`.tooldetail`) justo bajo la fila de chips, con args/salida y resaltado. `shell_exec` muestra el **comando** como bloque bash resaltado; `file_write` muestra **ruta + contenido en bruto** (con resaltado según extensión) en lugar del JSON.
+- `toolStore` (Map id → {name,args,output,ok}) alimenta el detalle inline y se actualiza en vivo mientras la ejecución continúa.
   - **think**: solo se emite si `showThinking` está activo en config (el servidor no envía `think` si no); caja fina/gris (`font-weight:200`) dentro del globo.
 - `style.css`: tema oscuro; clases `.msg/.bubble/.thinkbox/.toolchips/.toolchip/.toolpre/.errinfo/…`.
 
