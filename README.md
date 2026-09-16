@@ -5,6 +5,7 @@ Chat harness local: interfaz web de chat (localhost) conectada a un LLM **OpenAI
 ## Características
 
 - UI web en `http://127.0.0.1:4321` (chat con streaming SSE, tarjetas de tool calls, detener ejecución)
+- Markdown completo en las respuestas: tablas (incluidas las que el LLM emite sin fila separadora), código resaltado, citas, listas
 - LLM OpenAI-compatible: `/v1/chat/completions` (streaming) + detección de modelos vía `GET /v1/models`. Funciona con OpenRouter, OpenAI, Ollama, LM Studio, vLLM, etc.
 - Configuración propia del LLM: `baseUrl`, `apiKey`, `model` (o `auto`), `maxContextTokens`, `maxOutputTokens`, `temperature`
 - **Sesiones con sandbox**: cada sesión declara su `workdir`; las tools de fichero y los comandos no pueden salir de ella (defensa contra `..`, rutas absolutas y symlinks)

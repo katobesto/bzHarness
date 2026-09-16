@@ -56,10 +56,47 @@ function highlightIn(root) {
   }
 }
 
+function fixTables(src) {
+  const lines = String(src).split("\n");
+  const isTableLine = (l) => {
+    const t = l.trim();
+    return t.includes("|") && (t.startsWith("|") || t.split("|").length >= 3);
+  };
+  const isSeparator = (l) => {
+    const t = l.trim().replace(/^\|/, "").replace(/\|$/, "");
+    const cells = t.split("|").map((c) => c.trim());
+    return cells.length >= 1 && cells.every((c) => c === "" || /^:?-+:?$/.test(c));
+  };
+  const out = [];
+  let i = 0;
+  let inFence = false;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (/^\s*(```|~~~)/.test(line)) {
+      out.push(line);
+      inFence = !inFence;
+      i++;
+      continue;
+    }
+    if (inFence) { out.push(line); i++; continue; }
+    if (isTableLine(line)) {
+      const block = [];
+      while (i < lines.length && isTableLine(lines[i])) { block.push(lines[i]); i++; }
+      if (block.length >= 2 && !isSeparator(block[1])) {
+        const cols = block[0].trim().replace(/^\|/, "").replace(/\|$/, "").split("|").length;
+        out.push(block[0]);
+        out.push("|" + " --- |".repeat(Math.max(1, cols)));
+        out.push(...block.slice(1));
+      } else out.push(...block);
+    } else { out.push(line); i++; }
+  }
+  return out.join("\n");
+}
+
 function fullMD(src) {
   if (!window.marked || !window.DOMPurify) return inlineMd(String(src ?? ""));
   const holder = document.createElement("div");
-  holder.innerHTML = window.DOMPurify.sanitize(window.marked.parse(String(src ?? "")), { ADD_ATTR: ["target"] });
+  holder.innerHTML = window.DOMPurify.sanitize(window.marked.parse(fixTables(String(src ?? ""))), { ADD_ATTR: ["target"] });
   highlightIn(holder);
   return holder.innerHTML;
 }
