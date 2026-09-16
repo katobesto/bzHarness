@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>bzHarness</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="vendor/hljs-github-dark.min.css" />
+</head>
+<body>
+  <header>
+    <div class="brand">bz<span>harness</span></div>
+    <div class="hdr-right">
+      <div class="model-badge" id="modelBadge" title="">—</div>
+      <button id="btnConfig" class="btn ghost">Configuración</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside>
+      <button id="btnNewSession" class="btn primary wide">+ Nueva sesión</button>
+      <div id="sessionList"></div>
+    </aside>
+
+    <main>
+      <div id="chat" class="chat"></div>
+      <div class="composer">
+        <textarea id="input" rows="2" placeholder="Escribe un mensaje… (Enter envía, Shift+Enter salto de línea)"></textarea>
+        <div class="composer-actions">
+          <button id="btnStop" class="btn danger" disabled>Parar</button>
+          <button id="btnSend" class="btn primary" disabled>Enviar</button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Nueva sesión -->
+  <div class="modal" id="modalNew" hidden>
+    <div class="modal-box">
+      <h2>Nueva sesión</h2>
+      <label>Nombre (opcional)
+        <input id="nsName" placeholder="p.ej. mi-proyecto" />
+      </label>
+      <label>Carpeta de trabajo (sandbox)
+        <div class="row">
+          <input id="nsWorkdir" class="mono" placeholder="C:\ruta\absoluta" />
+          <button id="nsBrowse" class="btn ghost">Examinar</button>
+        </div>
+      </label>
+      <div id="nsPresets" class="chips"></div>
+      <label>Modelo
+        <select id="nsModel"></select>
+      </label>
+      <p class="hint">Todo lo que el agente cree o ejecute en esta sesión queda confinado en esa carpeta. El harness creará <span class="mono">.bzharness/</span> dentro de ella.</p>
+      <div class="modal-actions">
+        <button class="btn ghost" data-close>Cancelar</button>
+        <button id="nsCreate" class="btn primary">Crear sesión</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Configuración -->
+  <div class="modal" id="modalConfig" hidden>
+    <div class="modal-box wide">
+      <h2>Configuración (LLM + harness)</h2>
+      <div class="grid2">
+        <label>Base URL (OpenAI-compatible)
+          <input id="cfBaseUrl" class="mono" />
+        </label>
+        <label>API key
+          <input id="cfApiKey" type="password" class="mono" autocomplete="off" />
+        </label>
+        <label>Modelo (auto = detectar vía /v1/models)
+          <input id="cfModel" list="modelList" class="mono" />
+          <datalist id="modelList"></datalist>
+        </label>
+        <label>Temperature
+          <input id="cfTemp" type="number" step="0.1" min="0" max="2" />
+        </label>
+        <label>Máx. tokens de contexto
+          <input id="cfMaxCtx" type="number" />
+        </label>
+        <label>Máx. tokens de salida
+          <input id="cfMaxOut" type="number" />
+        </label>
+        <label>Timeout de comandos (ms)
+          <input id="cfShellTimeout" type="number" />
+        </label>
+        <label class="check">
+          <input id="cfShellApproval" type="checkbox" /> Aprobar comandos shell manualmente
+        </label>
+        <label class="check">
+          <input id="cfShowThinking" type="checkbox" /> Mostrar cadena de pensamiento (think)
+        </label>
+        <label>Carpeta de trabajo por defecto
+          <input id="cfDefaultWorkdir" class="mono" />
+        </label>
+        <label>Puerto (requiere reiniciar el proceso)
+          <input id="cfPort" type="number" disabled />
+        </label>
+        <label>Presets de carpeta de trabajo (uno por línea)
+          <textarea id="cfPresets" class="mono" rows="3"></textarea>
+        </label>
+      </div>
+      <div class="modal-actions">
+        <button class="btn ghost" data-close>Cancelar</button>
+        <button id="cfSave" class="btn primary">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Aprobación de comandos -->
+  <div class="modal" id="modalApproval" hidden>
+    <div class="modal-box">
+      <h2>Aprobar comando</h2>
+      <pre id="apCommand" class="mono apcmd"></pre>
+      <div class="modal-actions">
+        <button id="apDeny" class="btn danger">Rechazar</button>
+        <button id="apApprove" class="btn primary">Ejecutar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Detalle de herramienta -->
+  <div class="modal" id="modalTool" hidden>
+    <div class="modal-box wide">
+      <h2 id="toolTitle"></h2>
+      <div id="toolBody"></div>
+      <div class="modal-actions">
+        <button class="btn ghost" data-close>Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toasts"></div>
+  <script src="vendor/marked.min.js"></script>
+  <script src="vendor/purify.min.js"></script>
+  <script src="vendor/highlight.min.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
