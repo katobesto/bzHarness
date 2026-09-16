@@ -14,6 +14,7 @@ npm run dev        # node --watch src/server.js  (auto-reinicia al cambiar src/*
 ```
 
 - Puerto por defecto: `4321` (config `port`; cambiarlo exige reiniciar el proceso).
+- `start-harness.bat` (doble clic): libera el puerto (mata el proceso que lo escuche, según `config.json`), lanza `node src/server.js` y abre `http://127.0.0.1:<port>` en el navegador.
 - Config viva: `config/config.json` (gitignorado; `config/.gitignore` = `*`). Se lee en arranque
   y se relee al guardar (PUT `/api/config`). Si el fichero tiene BOM, se tolera (se retira antes de parsear).
 - **Ojo**: `node --watch` no relanza tras un crash; tras matar el proceso hay que relanzar `npm run dev`.
@@ -135,5 +136,6 @@ Flujo de un turno:
 | `public/vendor/*` | marked, highlight.js, DOMPurify |
 | `scripts/smoke.js` | tests de humo |
 | `scripts/pick-dir.ps1`, `scripts/FolderPick.cs` | selector nativo de carpetas |
+| `start-harness.bat` | arranque rápido (Windows): libera el puerto, lanza el servidor y abre el navegador |
 | `config/config.json` | config viva (gitignorada) |
 | `README.md` | doc de usuario |

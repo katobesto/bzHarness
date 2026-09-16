@@ -19,6 +19,8 @@ npm install
 npm run dev        # o: npm start
 ```
 
+O en Windows, doble clic en `start-harness.bat`: mata cualquier proceso que ocupe el puerto (se lee de `config/config.json`, por defecto `4321`), arranca `node src/server.js` y abre la web en el navegador.
+
 Abre `http://127.0.0.1:4321` → **Configuración** → base URL + API key → (los modelos se detectan solos) → **Nueva sesión** → elige la carpeta de trabajo → chatea.
 
 Alternativa: variable de entorno `HARNESS_API_KEY` si no quieres guardar el token en disco.
