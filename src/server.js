@@ -98,6 +98,31 @@ function writeErrorLog(session, detail) {
   }
 }
 
+// build id: cambia cuando los assets public/ cambian (para el auto-reload de la UI)
+function computeBuild() {
+  let max = 0;
+  const pub = path.join(ROOT, "public");
+  const walk = (dir) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) walk(p);
+      else {
+        try {
+          const m = fs.statSync(p).mtimeMs;
+          if (m > max) max = m;
+        } catch {}
+      }
+    }
+  };
+  try {
+    walk(pub);
+  } catch {}
+  return String(Math.floor(max));
+}
+const BUILD_ID = computeBuild();
+
+app.get("/api/health", (req, res) => res.json({ ok: true, build: BUILD_ID }));
+
 app.get("/api/config", (req, res) => res.json(maskConfig(cfg)));
 
 app.put("/api/config", (req, res) => {

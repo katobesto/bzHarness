@@ -875,6 +875,16 @@ function setAsideHidden(hidden) {
 }
 
 async function init() {
+  // auto-reload: si el servidor tiene un build de assets mas reciente que el de esta pagina,
+  // recarga una vez (cubre pestañas viejas que el navegador reactiva sin recargar)
+  try {
+    const h = await (await fetch("/api/health")).json();
+    if (h && h.build && localStorage.getItem("bz.build") !== h.build) {
+      localStorage.setItem("bz.build", h.build);
+      location.reload();
+      return;
+    }
+  } catch {}
   let lastErr = null;
   for (let i = 0; i < 5; i++) {
     try {
