@@ -269,10 +269,10 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; background:
 
 /* ============ chat ============ */
 .chat { flex: 1; overflow-y: auto; padding: 26px 28px 12px; font-size: calc(14px * var(--chat-zoom, 1)); }
-.chat > * { max-width: 800px; margin-left: auto; margin-right: auto; }
+.chat > * { max-width: min(1400px, calc(800px * var(--chat-zoom, 1))); margin-left: auto; margin-right: auto; }
 
 .welcome {
-  max-width: 560px;
+  max-width: min(1000px, calc(560px * var(--chat-zoom, 1)));
   margin: 9vh auto 24px;
   text-align: center;
   padding: 40px 32px;
@@ -564,7 +564,7 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; background:
   padding: 8px 28px 18px;
   background: linear-gradient(180deg, transparent, var(--bg-chat) 30%);
 }
-.composer-wrap > * { max-width: 800px; margin-left: auto; margin-right: auto; }
+.composer-wrap > * { max-width: min(1400px, calc(800px * var(--chat-zoom, 1))); margin-left: auto; margin-right: auto; }
 .composer {
   background: var(--surface);
   border: 1px solid var(--border);

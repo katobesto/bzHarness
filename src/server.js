@@ -27,7 +27,7 @@ process.on("unhandledRejection", (e) => crashLog("unhandledRejection", e));
 
 const app = express();
 app.use(express.json({ limit: "4mb" }));
-app.use(express.static(path.join(ROOT, "public")));
+app.use(express.static(path.join(ROOT, "public"), { setHeaders: (res) => res.setHeader("Cache-Control", "no-store") }));
 
 const sessions = new Map();
 const activeRuns = new Map();
@@ -245,7 +245,7 @@ app.post("/api/open-dir", (req, res) => {
     const child = spawn(cmd, [dir], { detached: true, stdio: "ignore" });
     child.on("error", () => {});
     child.unref();
-    res.json({ ok: true });
+res.json({ ok: true, dir });
   } catch (e) {
     res.status(500).json({ error: "no se pudo abrir el explorador: " + e.message });
   }

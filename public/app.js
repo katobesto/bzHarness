@@ -754,7 +754,8 @@ $("#btnAside").onclick = () => setAsideHidden(!document.body.classList.contains(
 $("#btnOpenDir").onclick = async () => {
   if (!currentId) return;
   try {
-    await api("/api/open-dir", { method: "POST", body: JSON.stringify({ sessionId: currentId }) });
+    const r = await api("/api/open-dir", { method: "POST", body: JSON.stringify({ sessionId: currentId }) });
+    toast(`Explorador abierto en ${r.dir}`);
   } catch (e) {
     toast(e.message, true);
   }
