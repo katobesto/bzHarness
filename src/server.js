@@ -236,6 +236,21 @@ app.post("/api/stop/:sessionId", (req, res) => {
   res.json({ ok: true });
 });
 
+app.post("/api/open-dir", (req, res) => {
+  const session = getOrLoad(req.body?.sessionId);
+  if (!session) return res.status(404).json({ error: "sesión no encontrada" });
+  const dir = path.resolve(session.workdir);
+  const cmd = process.platform === "win32" ? "explorer" : process.platform === "darwin" ? "open" : "xdg-open";
+  try {
+    const child = spawn(cmd, [dir], { detached: true, stdio: "ignore" });
+    child.on("error", () => {});
+    child.unref();
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: "no se pudo abrir el explorador: " + e.message });
+  }
+});
+
 app.post("/api/chat", async (req, res) => {
   const { sessionId, message } = req.body || {};
   const session = getOrLoad(sessionId);

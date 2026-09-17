@@ -353,6 +353,7 @@ async function consumeSSE(res, h) {
 function updateButtons() {
   $("#btnSend").disabled = busy || !currentId;
   $("#btnStop").disabled = !busy;
+  $("#btnOpenDir").disabled = !currentId;
   $("#input").disabled = busy;
 }
 
@@ -662,6 +663,29 @@ async function saveConfig() {
 
 /* ---------- init ---------- */
 
+/* ---------- zoom de texto del chat ---------- */
+
+const ZOOM_MIN = 0.8, ZOOM_MAX = 1.5, ZOOM_STEP = 0.1;
+let chatZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Number(localStorage.getItem("bz.chatZoom")) || 1));
+
+function applyZoom() {
+  document.documentElement.style.setProperty("--chat-zoom", String(chatZoom));
+  $("#btnZoomIn").disabled = chatZoom >= ZOOM_MAX;
+  $("#btnZoomOut").disabled = chatZoom <= ZOOM_MIN;
+}
+function bumpZoom(delta) {
+  chatZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round((chatZoom + delta) * 10) / 10));
+  localStorage.setItem("bz.chatZoom", String(chatZoom));
+  applyZoom();
+}
+
+/* ---------- barra lateral ---------- */
+
+function setAsideHidden(hidden) {
+  document.body.classList.toggle("no-aside", hidden);
+  localStorage.setItem("bz.noAside", hidden ? "1" : "0");
+}
+
 async function init() {
   try {
     config = await api("/api/config");
@@ -724,8 +748,22 @@ $("#nsCreate").onclick = createSession;
 $("#cfSave").onclick = saveConfig;
 $("#apApprove").onclick = () => answerApproval(true);
 $("#apDeny").onclick = () => answerApproval(false);
+$("#btnZoomIn").onclick = () => bumpZoom(ZOOM_STEP);
+$("#btnZoomOut").onclick = () => bumpZoom(-ZOOM_STEP);
+$("#btnAside").onclick = () => setAsideHidden(!document.body.classList.contains("no-aside"));
+$("#btnOpenDir").onclick = async () => {
+  if (!currentId) return;
+  try {
+    await api("/api/open-dir", { method: "POST", body: JSON.stringify({ sessionId: currentId }) });
+  } catch (e) {
+    toast(e.message, true);
+  }
+};
 document.querySelectorAll("[data-close]").forEach((b) => {
   b.onclick = () => b.closest(".modal").setAttribute("hidden", "");
 });
+
+applyZoom();
+setAsideHidden(localStorage.getItem("bz.noAside") === "1");
 
 init();

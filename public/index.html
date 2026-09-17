@@ -10,14 +10,23 @@
 </head>
 <body>
   <header>
-    <div class="brand">
+    <div class="hdr-left">
+      <button id="btnAside" class="icon-btn" title="Mostrar/ocultar lista de sesiones" aria-label="Mostrar/ocultar lista de sesiones">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+      <div class="brand">
       <span class="brand-mark" aria-hidden="true">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/><circle cx="12" cy="12" r="3.2"/></svg>
       </span>
       bz<span>harness</span>
+      </div>
     </div>
     <div class="hdr-right">
       <div class="model-badge" id="modelBadge" title="">—</div>
+      <button id="btnOpenDir" class="btn ghost" title="Abrir la carpeta de trabajo de la sesión en el explorador" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+        Explorador
+      </button>
       <button id="btnConfig" class="btn ghost">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 1 1 4 0v.09c0 .66.39 1.25 1 1.51a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87c.26.61.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg>
         Configuración
@@ -42,6 +51,10 @@
           <textarea id="input" rows="2" placeholder="Pregunta al agente…"></textarea>
           <div class="composer-actions">
             <span class="composer-hint">Enter envía · Shift+Enter salto de línea</span>
+            <div class="zoom-ctrl" role="group" aria-label="Tamaño del texto del chat">
+              <button id="btnZoomOut" class="icon-btn zoom" title="Reducir tamaño del texto" disabled>A−</button>
+              <button id="btnZoomIn" class="icon-btn zoom" title="Aumentar tamaño del texto">A+</button>
+            </div>
             <button id="btnStop" class="icon-btn stop" title="Parar ejecución" disabled>
               <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/></svg>
             </button>
@@ -136,12 +149,10 @@
         <div class="toggle-row">
           <label class="toggle">
             <input id="cfShellApproval" type="checkbox" />
-            <span class="switch" aria-hidden="true"></span>
             <span class="toggle-txt">Aprobar comandos shell manualmente</span>
           </label>
           <label class="toggle">
             <input id="cfShowThinking" type="checkbox" />
-            <span class="switch" aria-hidden="true"></span>
             <span class="toggle-txt">Mostrar cadena de pensamiento (think)</span>
           </label>
         </div>
