@@ -500,24 +500,18 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; background:
 .toolpre.fail { color: #ffb9b4; }
 .toolpre.ok { color: #c9d4b8; }
 
-/* think (colapsado por defecto; .open muestra el pensamiento completo) */
-.bubble .thinkwrap {
-  margin: 0 0 10px;
-  border: 1px solid var(--border-soft);
-  border-left: 2px solid #3a4356;
-  border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.02);
-}
+/* think (colapsado por defecto; .open muestra el pensamiento completo).
+   Sin tarjeta ni bordes: se mezcla con el chat, solo el tono (gris apagado) lo diferencia */
+.bubble .thinkwrap { margin: 0 0 8px; }
 .bubble .thinkwrap[hidden] { display: none; }
 .thinkline {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 10px;
+  padding: 0;
   cursor: pointer;
   user-select: none;
 }
-.thinkline:hover { background: rgba(255, 255, 255, 0.03); border-radius: var(--radius-sm); }
 .t-label {
   flex: 1;
   min-width: 0;
@@ -541,15 +535,13 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; background:
   color: var(--faint);
   cursor: pointer;
 }
-.t-expand:hover { color: var(--text); background: var(--surface-2); }
+.t-expand:hover { color: var(--text); }
 .t-expand svg { width: 12px; height: 12px; transition: transform 0.15s; }
 .thinkwrap.open .t-expand svg { transform: rotate(180deg); }
 .bubble .thinkbox {
   display: none;
   margin: 0;
-  padding: 8px 12px;
-  border-top: 1px solid var(--border-soft);
-  background: transparent;
+  padding: 2px 0 0;
   color: #7d8592;
   font-family: inherit;
   font-weight: 300;
