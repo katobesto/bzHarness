@@ -50,7 +50,7 @@ Alternativa: variable de entorno `HARNESS_API_KEY` si no quieres guardar el toke
 |---|---|
 | `baseUrl` | Endpoint OpenAI-compatible (p.ej. `https://api.openrouter.ai/v1`, `http://localhost:11434/v1`) |
 | `apiKey` | Token (también vía env `HARNESS_API_KEY`) |
-| `model` | Nombre de modelo o `auto` (detecta el primero de `/v1/models`) |
+| `model` | Modelo concreto. No se usa "auto": si se detecta uno pendiente, el harness lo resuelve al arrancar (primero de `/v1/models` sin "/") y lo guarda |
 | `maxContextTokens` | Presupuesto de contexto; el historial se recorta si lo supera |
 | `maxOutputTokens` | `max_tokens` por respuesta |
 | `temperature` | Temperatura de muestreo |

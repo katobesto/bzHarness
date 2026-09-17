@@ -5,7 +5,7 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadConfig, saveConfig, maskConfig, loadIndex, saveIndex } from "./config.js";
-import { listModels } from "./llm.js";
+import { listModels, joinBase } from "./llm.js";
 import { runAgent } from "./agent.js";
 import { resolveInSandbox } from "./util/contain.js";
 
@@ -125,13 +125,26 @@ app.get("/api/health", (req, res) => res.json({ ok: true, build: BUILD_ID }));
 
 app.get("/api/config", (req, res) => res.json(maskConfig(cfg)));
 
-app.put("/api/config", (req, res) => {
+app.put("/api/config", async (req, res) => {
   const patch = { ...(req.body || {}) };
   if (typeof patch.apiKey === "string" && (patch.apiKey === "" || patch.apiKey.startsWith("•"))) delete patch.apiKey;
 delete patch.port;
     delete patch.browsableRoots;
     if (Array.isArray(patch.workspacePresets) === false && patch.workspacePresets !== undefined) patch.workspacePresets = String(patch.workspacePresets).split("\n").filter(Boolean);
   try {
+    // "auto" no es un valor permitido: se fuerza un modelo concreto
+    if (patch.model === undefined || patch.model === "auto" || !String(patch.model).trim()) {
+      const merged = { ...cfg, ...patch };
+      let ms = [];
+      try {
+        ms = await listModels(merged);
+      } catch {
+        /* sin deteccion (key/baseUrl) -> error abajo */
+      }
+      const m = ms.find((x) => !x.includes("/")) || ms[0];
+      if (!m) throw new Error("No se pudo determinar un modelo concreto (revisa apiKey/baseUrl). Indica un modelo válido.");
+      patch.model = m;
+    }
     const saved = saveConfig(patch);
     cfg = { ...saved, apiKey: saved.apiKey || process.env.HARNESS_API_KEY || "" };
     res.json(maskConfig(cfg));
@@ -141,12 +154,13 @@ delete patch.port;
 });
 
 app.get("/api/models", async (req, res) => {
-  if (!cfg.apiKey) return res.json({ models: [], error: "Falta la API key en la configuración" });
+  const url = joinBase(cfg.baseUrl, "/models");
+  if (!cfg.apiKey) return res.json({ models: [], error: "Falta la API key en la configuración", url });
   try {
     const models = await listModels(cfg);
-    res.json({ models, error: null });
+    res.json({ models, error: null, url });
   } catch (e) {
-    res.json({ models: [], error: e.message });
+    res.json({ models: [], error: e.message, url });
   }
 });
 
@@ -472,16 +486,40 @@ app.post("/api/chat", async (req, res) => {
 });
 
 export function startServer({ port = cfg.port, host = "127.0.0.1" } = {}) {
-  return new Promise((resolve, reject) => {
-    const server = app.listen(port, host, () => {
-      const actual = server.address().port;
-      console.log(`bzHarness by Benzo listo -> http://${host}:${actual}`);
-      console.log(`  workdir por defecto: ${cfg.defaultWorkdir}`);
-      console.log(`  LLM: ${cfg.baseUrl} (model: ${cfg.model || "auto"})`);
-      resolve({ server, url: `http://${host}:${actual}`, port: actual });
-    });
-    server.on("error", reject);
-  });
+  return ensureConcreteModel().then(() =>
+    new Promise((resolve, reject) => {
+      const server = app.listen(port, host, () => {
+        const actual = server.address().port;
+        console.log(`bzHarness by Benzo listo -> http://${host}:${actual}`);
+        console.log(`  workdir por defecto: ${cfg.defaultWorkdir}`);
+        console.log(`  LLM: ${cfg.baseUrl} (model: ${cfg.model || "(sin modelo)"})`);
+        resolve({ server, url: `http://${host}:${actual}`, port: actual });
+      });
+      server.on("error", reject);
+    })
+  );
+}
+
+// La config no admite "auto": si queda un "auto" heredado, se resuelve a un
+// modelo concreto detectado en /models y se persiste. Si no se puede detectar
+// (sin key, gateway caido), se sigue con el estado actual y el chat avisara.
+async function ensureConcreteModel() {
+  if (cfg.model && cfg.model !== "auto") return;
+  try {
+    const ms = await listModels(cfg);
+    const m = ms.find((x) => !x.includes("/")) || ms[0];
+    if (m) {
+      cfg = { ...cfg, model: m };
+      try {
+        saveConfig({ model: m });
+      } catch {
+        /* sin permisos para reescribir: la resolucion queda en memoria */
+      }
+      console.log(`  model "auto" resuelto a: ${m}`);
+    }
+  } catch {
+    /* deteccion no disponible ahora mismo */
+  }
 }
 
 let isCli = false;

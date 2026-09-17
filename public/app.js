@@ -719,13 +719,9 @@ async function createSession() {
 function updateModelBadge() {
   const b = $("#modelBadge");
   if (!config) return;
-  if (config.model === "auto") {
-    b.textContent = models.length ? `auto → ${models[0]}` : "auto (sin modelos detectados)";
-    b.title = modelError ? `error detección: ${modelError}` : `${config.baseUrl} · ${models.length} modelos detectados`;
-  } else {
-    b.textContent = config.model;
-    b.title = config.baseUrl;
-  }
+  const m = config.model && config.model !== "auto" ? config.model : (models.find((x) => !x.includes("/")) || models[0] || "");
+  b.textContent = m || "sin modelo (revisa configuracion)";
+  b.title = modelError ? `error detección: ${modelError}` : `${config.baseUrl} · ${models.length} modelos detectados`;
 }
 
 function openConfigModal() {
@@ -733,7 +729,8 @@ function openConfigModal() {
   $("#cfBaseUrl").value = c.baseUrl;
   $("#cfApiKey").value = "";
   $("#cfApiKey").placeholder = c.apiKey ? `••••${c.apiKey.slice(-4)} — dejar en blanco para mantener` : "pegar token aquí";
-  $("#cfModel").value = c.model;
+  $("#cfModel").value =
+    c.model && c.model !== "auto" ? c.model : models.find((m) => !m.includes("/")) || models[0] || c.model || "";
   $("#modelList").innerHTML = models.map((m) => `<option value="${esc(m)}">`).join("");
   $("#cfMaxCtx").value = c.maxContextTokens;
   $("#cfMaxOut").value = c.maxOutputTokens;
@@ -749,10 +746,15 @@ function openConfigModal() {
 
 async function saveConfig() {
   const lines = (s) => (s || "").split("\n").map((x) => x.trim()).filter(Boolean);
+  let modelVal = $("#cfModel").value.trim();
+  if (!modelVal) {
+    modelVal = models.find((m) => !m.includes("/")) || models[0] || "";
+    if (!modelVal) throw new Error("Selecciona un modelo concreto (no se pudo detectar ninguno)");
+  }
   const patch = {
     baseUrl: $("#cfBaseUrl").value.trim(),
     apiKey: $("#cfApiKey").value.trim(),
-    model: $("#cfModel").value.trim() || "auto",
+    model: modelVal,
     maxContextTokens: Number($("#cfMaxCtx").value),
     maxOutputTokens: Number($("#cfMaxOut").value),
     temperature: Number($("#cfTemp").value),

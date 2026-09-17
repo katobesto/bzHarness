@@ -47,7 +47,7 @@ Flujo de un turno:
 
 ### `src/config.js`
 - `DEFAULTS` + merge con `config/config.json` (`loadConfig`); `saveConfig(patch)` valida y reescribe.
-- Claves: `baseUrl`, `apiKey` (o env `HARNESS_API_KEY`), `model` (`auto` o id), `maxContextTokens`, `maxOutputTokens`, `temperature`, `defaultWorkdir`, `workspacePresets`, `showThinking`, `shellApproval`, `shellTimeoutMs`, `llmIdleTimeoutMs` (opcional, default 90000), `port`.
+- Claves: `baseUrl`, `apiKey` (o env `HARNESS_API_KEY`), `model` (siempre concreto; un "auto" heredado se resuelve al arrancar vía `/models` —preferencia: el primero sin "/"— y se persiste), `maxContextTokens`, `maxOutputTokens`, `temperature`, `defaultWorkdir`, `workspacePresets`, `showThinking`, `shellApproval`, `shellTimeoutMs`, `llmIdleTimeoutMs` (opcional, default 90000), `port`.
 - `loadIndex/saveIndex`: índice global de sesiones.
 
 ### `src/llm.js` — cliente LLM
@@ -67,13 +67,13 @@ Flujo de un turno:
 
 ### `src/server.js` — API + ciclo de vida
 - Endpoints (solo localhost):
-  - `GET/PUT /api/config` (PUT: `apiKey` vacío o `••••…` se ignora; `port` no es editable en caliente; se limpia `browsableRoots` si llega)
-  - `GET /api/models`, `GET /api/workspaces`
+  - `GET/PUT /api/config` (PUT: `apiKey` vacío o `••••…` se ignora; `port` no es editable en caliente; se limpia `browsableRoots` si llega; `model` no puede quedar en `auto`/vacío: si llega así se fuerza un modelo concreto detectado en `/models` y si no se puede detectar → 400)
+  - `GET /api/models` (responde `{models, error, url}`: `url` es la exacta que se consulta — `joinBase(baseUrl, "/models")`, nunca duplica el `/v1` de la `baseUrl`), `GET /api/workspaces`
   - `POST /api/pick-dir {start}` → lanza `scripts/pick-dir.ps1` (selector nativo moderno de Windows) y devuelve `{path}` o `null` si se cancela
   - `POST /api/sessions {name?, workdir, model?}` (crea el árbol `.bzharness/`), `GET /api/sessions`, `GET/DELETE /api/sessions/:id`
   - `POST /api/chat {sessionId, message}` (SSE; 409 si ya hay run activo)
   - `POST /api/approvals/:id {approved}`, `POST /api/stop/:sessionId`
-- **Modelo `auto`**: primero `cfg.model` si no es `auto`; si lo es, `listModels` y elige el id **sin prefijo de proveedor** (p. ej. `qwen3.8-27b`) si existe, si no el primero.
+- **Modelo siempre concreto**: `startServer` ejecuta `ensureConcreteModel()` — si la config tiene `auto`/vacío, `listModels` y elige el id **sin prefijo de proveedor** (p. ej. `qwen3.8-27b`) si existe, si no el primero, y reescribe `config.json`. En el chat, `cfg.model` si no es `auto`; si lo es (caso legado sin detección), `listModels` de nuevo; si tampoco → error visible al usuario.
 - SSE: `emit` comprueba `!res.writableEnded && res.writable`; `res.on("error")` silenciado (un cliente que desconecta no tumba el proceso).
 - **Resiliencia a crashes** (el proceso ya se nos cayó una vez por un `spawn` sin handler de `error`):
   - `process.on("uncaughtException" / "unhandledRejection")` → log en `config/crash.log` y **el servidor sigue vivo**.

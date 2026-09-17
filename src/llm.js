@@ -1,6 +1,6 @@
 ﻿import { estimateMsgTokens } from "./util/tokens.js";
 
-function joinBase(baseUrl, p) {
+export function joinBase(baseUrl, p) {
   return baseUrl.replace(/\/+$/, "") + p;
 }
 
