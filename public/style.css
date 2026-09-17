@@ -500,10 +500,17 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; background:
 .toolpre.fail { color: #ffb9b4; }
 .toolpre.ok { color: #c9d4b8; }
 
-/* think (colapsado por defecto; .open muestra el pensamiento completo).
-   Sin tarjeta ni bordes: se mezcla con el chat, solo el tono (gris apagado) lo diferencia */
+/* think: en vivo se mezcla con el chat (sin bordes); al terminar (.done) se
+   enmarca como recuadro "Razonamiento" desplegable */
 .bubble .thinkwrap { margin: 0 0 8px; }
 .bubble .thinkwrap[hidden] { display: none; }
+.bubble .thinkwrap.done {
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  border-radius: 10px;
+  padding: 6px 10px;
+  margin: 0 0 10px;
+}
 .thinkline {
   display: flex;
   align-items: center;
@@ -515,13 +522,28 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; background:
 .t-label {
   flex: 1;
   min-width: 0;
+  display: flex;
+  align-items: baseline;
+  overflow: hidden;
+  font-weight: 300;
+  font-size: 0.85em;
+}
+.t-word {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  color: var(--text);
+  font-weight: 500;
+}
+/* las frases que van apareciendo: gris claro, sin animacion */
+.t-phrase {
+  flex: 0 1 auto;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-weight: 300;
-  font-size: 0.85em;
-  color: #7d8592;
+  color: var(--muted);
 }
+.thinkwrap.done .t-word { color: var(--muted); }
 .t-expand {
   flex: 0 0 auto;
   display: inline-flex;
@@ -549,9 +571,8 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; background:
   line-height: 1.45;
   white-space: pre-wrap;
   word-break: break-word;
-  max-height: 260px;
-  overflow-y: auto;
 }
+.thinkwrap.done .thinkbox { padding: 4px 0 0; }
 .thinkwrap.open .thinkbox { display: block; }
 
 /* pulso compartido (esperando al modelo / pensando / en curso): blanco -> gris, tipo latido */

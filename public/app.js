@@ -121,7 +121,7 @@ function addAssistantBubble(text) {
   el.className = "msg assistant";
   el.innerHTML = `<div class="bubble"><div class="thinkwrap" hidden>
       <div class="thinkline">
-        <span class="t-label">Thinking…</span>
+        <span class="t-label"><span class="t-word">Thinking</span><span class="t-phrase"></span></span>
         <button class="t-expand" title="Desplegar/ocultar el pensamiento" aria-label="Desplegar pensamiento">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
         </button>
@@ -325,8 +325,9 @@ function renderMessage(m) {
     if (m.reasoning && config?.showThinking !== false) {
       const tw = b.querySelector(".thinkwrap");
       tw.hidden = false;
+      tw.classList.add("done");
+      tw.querySelector(".t-word").textContent = "Razonamiento";
       tw.querySelector(".thinkbox").textContent = m.reasoning;
-      tw.querySelector(".t-label").textContent = lastSentence(m.reasoning) || "Pensamiento";
     }
     if (m.tool_calls) {
       const row = document.createElement("div");
@@ -421,17 +422,22 @@ async function sendMessage() {
     if (phase !== "wait") return;
     phase = "think";
     bubble.querySelector(".tcontent").innerHTML = ""; // el "esperando al modelo" cede el sitio al thought
-    bubble.querySelector(".thinkwrap").hidden = false;
-    const tl = bubble.querySelector(".t-label");
-    tl.classList.add("bz-pulse");
-    tl.textContent = "Thinking…";
+    const tw = bubble.querySelector(".thinkwrap");
+    tw.hidden = false;
+    tw.classList.remove("done");
+    const word = bubble.querySelector(".t-word");
+    word.textContent = "Thinking";
+    word.classList.add("bz-pulse");
+    bubble.querySelector(".t-phrase").textContent = "";
   };
   const stopThink = () => {
     if (phase !== "think") return;
     phase = "answer";
-    const tl = bubble.querySelector(".t-label");
-    tl.classList.remove("bz-pulse");
-    tl.textContent = lastSentence(thinkSeg) || ""; // desaparece la etiqueta "Thinking"
+    bubble.querySelector(".thinkwrap").classList.add("done"); // recuadro "Razonamiento"
+    const word = bubble.querySelector(".t-word");
+    word.classList.remove("bz-pulse");
+    word.textContent = "Razonamiento";
+    bubble.querySelector(".t-phrase").textContent = ""; // sin la ultima frase
   };
   busy = true;
   updateButtons();
@@ -485,7 +491,7 @@ async function sendMessage() {
         startThink();
         bubble.querySelector(".thinkbox").textContent = thinkSeg;
         const s = lastSentence(thinkSeg);
-        bubble.querySelector(".t-label").textContent = s ? `Thinking: ${s}` : "Thinking…";
+        bubble.querySelector(".t-phrase").textContent = s ? `: ${s}` : "";
         scrollBottom();
       },
       tool_call: (ev) => {
@@ -551,10 +557,11 @@ async function sendMessage() {
         phase = "wait";
         const tw = bubble.querySelector(".thinkwrap");
         tw.hidden = true;
-        tw.classList.remove("open");
-        const tl = bubble.querySelector(".t-label");
-        tl.classList.remove("bz-pulse");
-        tl.textContent = "Thinking…";
+        tw.classList.remove("open", "done");
+        const word = bubble.querySelector(".t-word");
+        word.classList.remove("bz-pulse");
+        word.textContent = "Thinking";
+        bubble.querySelector(".t-phrase").textContent = "";
         bubble.querySelector(".thinkbox").textContent = "";
         const max = Math.max(1, (ev.maxAttempts || 4) - 1);
         bubble.querySelector(".tcontent").innerHTML = `<span class="typing bz-pulse">… gateway inestable, reintento ${ev.attempt}/${max}</span>`;
