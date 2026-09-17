@@ -756,6 +756,17 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; background:
 
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 14px; }
 .chips:empty { display: none; margin: 0; }
+.img-row { display: flex; flex-wrap: wrap; gap: 10px; margin: 4px 0 14px; }
+.img-row a {
+  line-height: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface-2);
+  transition: border-color 0.12s;
+}
+.img-row a:hover { border-color: var(--accent); }
+.img-row img { display: block; max-width: 220px; max-height: 140px; }
 .chip {
   background: var(--surface-2);
   border: 1px solid var(--border);

@@ -6,6 +6,10 @@ export function estimateMsgTokens(m) {
   return Math.ceil(c / 4) + 4;
 }
 
+export function estimateImageTokens(bytes) {
+  return 1000 + Math.min(2000, Math.floor((bytes || 0) / 2000));
+}
+
 export function trimHistory(messages, budget) {
   if (!messages.length) return [];
   let tokens = messages.reduce((s, m) => s + estimateMsgTokens(m), 0);

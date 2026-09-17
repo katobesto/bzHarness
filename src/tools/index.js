@@ -1,9 +1,9 @@
 import { shellExec } from "./shell.js";
-import { fileRead, fileWrite, fileEdit } from "./files.js";
+import { fileRead, fileWrite, fileEdit, imageRead } from "./files.js";
 import { globFiles, grepFiles } from "./search.js";
 import { SandboxError } from "../util/contain.js";
 
-const ALL = [shellExec, fileRead, fileWrite, fileEdit, globFiles, grepFiles];
+const ALL = [shellExec, fileRead, fileWrite, fileEdit, imageRead, globFiles, grepFiles];
 const byName = Object.fromEntries(ALL.map((t) => [t.name, t]));
 
 export const TOOLS = ALL.map((t) => ({

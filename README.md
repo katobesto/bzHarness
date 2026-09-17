@@ -9,7 +9,8 @@ Chat harness local: interfaz web de chat (localhost) conectada a un LLM **OpenAI
 - LLM OpenAI-compatible: `/v1/chat/completions` (streaming) + detección de modelos vía `GET /v1/models`. Funciona con OpenRouter, OpenAI, Ollama, LM Studio, vLLM, etc.
 - Configuración propia del LLM: `baseUrl`, `apiKey`, `model` (o `auto`), `maxContextTokens`, `maxOutputTokens`, `temperature`
 - **Sesiones con sandbox**: cada sesión declara su `workdir`; las tools de fichero y los comandos no pueden salir de ella (defensa contra `..`, rutas absolutas y symlinks)
-- Herramientas (tool calls): `shell_exec`, `file_read`, `file_write`, `file_edit`, `glob_files`, `grep_files`
+- Herramientas (tool calls): `shell_exec`, `file_read`, `file_write`, `file_edit`, `image_read`, `glob_files`, `grep_files`
+- **Visión**: `image_read` lee una imagen del sandbox (`png/jpg/gif/webp/bmp`, máx 10 MB) y la adjunta a la siguiente petición al modelo en el formato vision estándar (`content: [{type:"text"},{type:"image_url", url:"data:<mime>;base64,…"}]`). Requiere un modelo con visión (p. ej. `gpt-4o`, `claude`, `gemini`); la UI muestra la miniatura en el chat
 - Artefactos del agente en `<workdir>/.bzharness/` (transcript de la sesión + logs completos de comandos)
 - Opcional: aprobación manual de comandos shell desde la UI
 
@@ -71,7 +72,7 @@ W/
   ...resto de ficheros generados por el agente
 ```
 
-- `file_read/write/edit`, `glob_files`, `grep_files`: cualquier ruta se resuelve contra `W`; `..` o rutas absolutas fuera → error de sandbox (el LLM lo ve y puede corregirlo).
+- `file_read/write/edit`, `image_read`, `glob_files`, `grep_files`: cualquier ruta se resuelve contra `W`; `..` o rutas absolutas fuera → error de sandbox (el LLM lo ve y puede corregirlo). `image_read` solo sirve imágenes (`png/jpg/gif/webp/bmp`, máx 10 MB) y las adjunta a la siguiente llamada al LLM como parte `image_url` (data-URL base64).
 - Defensas contra symlinks (el realpath debe permanecer dentro de `W`).
 - `shell_exec`: se lanza con `cwd = W` (o subcarpeta relativa dentro). **Limitación**: un shell puede teóricamente `cd`/escribir fuera; para mitigar usa `shellApproval: true` (aprobación por comando en la UI) y revisa los logs en `.bzharness/runs/`.
 - El transcript de la sesión vive **dentro** de su carpeta de trabajo; el índice de sesiones (lista global) vive en `config/`.
@@ -84,7 +85,8 @@ W/
 - `POST /api/pick-dir` `{start}` — abre el selector nativo de carpetas de Windows y devuelve `{path}`
 - `POST /api/sessions` `{name?, workdir, model?}`
 - `GET /api/sessions` · `GET/DELETE /api/sessions/:id`
-- `POST /api/chat` `{sessionId, message}` → SSE: `token`, `tool_call`, `tool_result`, `approval_request`, `done`, `end`, `error`
+- `GET /api/sessions/:id/file?path=` — sirve una **imagen** del sandbox (para las miniaturas del chat); solo `png/jpg/gif/webp/bmp`, máx 15 MB
+- `POST /api/chat` `{sessionId, message}` → SSE: `token`, `tool_call`, `tool_result`, `image_attached`, `approval_request`, `done`, `end`, `error`
 - `POST /api/approvals/:id` `{approved}` · `POST /api/stop/:sessionId`
 
 ## Estructura

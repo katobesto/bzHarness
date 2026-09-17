@@ -184,6 +184,7 @@ const TOOL_META = {
   file_read: { label: "Read", icon: "read" },
   file_write: { label: "Write", icon: "write" },
   file_edit: { label: "Edit", icon: "edit" },
+  image_read: { label: "Image", icon: "image" },
   glob_files: { label: "Glob", icon: "search" },
   grep_files: { label: "Grep", icon: "search" }
 };
@@ -193,6 +194,7 @@ const TOOL_ICONS = {
   read: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M4 2.5h5.5L12 5v8.5H4z"/><path d="M9.5 2.5V5H12"/></svg>',
   write: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M11 2.5l2.5 2.5L6 12.5 3 13.5 4 10.5z"/></svg>',
   edit: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M11 2.5l2.5 2.5L6 12.5 3 13.5 4 10.5z"/></svg>',
+  image: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="3.5" width="11" height="9" rx="1.5"/><circle cx="6" cy="7" r="1.2"/><path d="M3 11l3-3 2.5 2.5L11 8l2.5 3"/></svg>',
   search: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="7" cy="7" r="3.5"/><path d="M9.8 9.8L13 13"/></svg>'
 };
 
@@ -439,6 +441,27 @@ async function sendMessage() {
         addToolChip(ev, chipsRow);
       },
       tool_result: updateToolChip,
+      image_attached: (ev) => {
+        const row = document.createElement("div");
+        row.className = "img-row";
+        for (const img of ev.images || []) {
+          const href = `/api/sessions/${currentId}/file?path=${encodeURIComponent(img.path)}`;
+          const a = document.createElement("a");
+          a.href = href;
+          a.target = "_blank";
+          a.rel = "noopener";
+          a.title = `${img.path} (${img.mime}, ${img.bytes} bytes) — clic para ver a tamaño completo`;
+          const im = document.createElement("img");
+          im.src = href;
+          im.alt = img.path;
+          a.append(im);
+          row.append(a);
+        }
+        if (row.childNodes.length) {
+          chatEl.append(row);
+          scrollBottom();
+        }
+      },
       approval_request: (ev) => {
         approvalId = ev.id;
         $("#apCommand").textContent = ev.command;

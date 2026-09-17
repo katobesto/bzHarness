@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadConfig, saveConfig, maskConfig, loadIndex, saveIndex } from "./config.js";
 import { listModels } from "./llm.js";
 import { runAgent } from "./agent.js";
+import { resolveInSandbox } from "./util/contain.js";
 
 const ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 let cfg = loadConfig();
@@ -201,6 +202,26 @@ app.get("/api/sessions/:id", (req, res) => {
   res.json(out);
 });
 
+app.get("/api/sessions/:id/file", (req, res) => {
+  const s = getOrLoad(req.params.id);
+  if (!s) return res.status(404).json({ error: "sesión no encontrada" });
+  const p = req.query.path;
+  if (typeof p !== "string" || !p) return res.status(400).json({ error: "path requerido" });
+  let abs;
+  try {
+    abs = resolveInSandbox(s.workdir, p, { mustExist: true });
+  } catch {
+    return res.status(404).json({ error: "fichero no encontrado o fuera del sandbox" });
+  }
+  const mime = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".bmp": "image/bmp" }[path.extname(abs).toLowerCase()];
+  if (!mime) return res.status(415).json({ error: "solo se sirven imagenes (png, jpg, jpeg, gif, webp, bmp)" });
+  const st = fs.statSync(abs);
+  if (st.size > 15 * 1024 * 1024) return res.status(413).json({ error: "imagen demasiado grande" });
+  res.setHeader("Content-Type", mime);
+  res.setHeader("Cache-Control", "no-store");
+  fs.createReadStream(abs).pipe(res);
+});
+
 app.delete("/api/sessions/:id", (req, res) => {
   const id = req.params.id;
   const s = getOrLoad(id);
@@ -259,7 +280,7 @@ app.post("/api/chat", async (req, res) => {
   if (activeRuns.has(session.id)) return res.status(409).json({ error: "la sesión ya tiene una ejecución activa" });
 
   const ac = new AbortController();
-  const run = { ac, signal: ac.signal, children: new Set(), approvals: new Map(), calls: [] };
+  const run = { ac, signal: ac.signal, children: new Set(), approvals: new Map(), calls: [], pendingImages: [] };
   const onCall = (info) => {
     info.n = run.calls.length + 1;
     run.calls.push(info);

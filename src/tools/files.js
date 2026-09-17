@@ -6,6 +6,22 @@ function relPath(session, abs) {
   return path.relative(session.workdir, abs).split(path.sep).join("/");
 }
 
+const IMAGE_MIME = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".bmp": "image/bmp"
+};
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+
+function fmtBytes(n) {
+  if (n >= 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + " MB";
+  if (n >= 1024) return (n / 1024).toFixed(0) + " KB";
+  return n + " B";
+}
+
 export const fileRead = {
   name: "file_read",
   description: "Lee un fichero de texto del sandbox y devuelve sus lineas numeradas. Para ficheros grandes usa offset (linea inicial, 1-based) y limit.",
@@ -45,6 +61,31 @@ export const fileRead = {
       .map((l, i) => `${start + i}: ${l.length > 2000 ? l.slice(0, 2000) + "…" : l}`)
       .join("\n");
     return `lineas ${start}-${end} de ${lines.length} (${relPath(session, abs)})\n${body}`;
+  }
+};
+
+export const imageRead = {
+  name: "image_read",
+  description:
+    "Lee una imagen del sandbox (png, jpg, jpeg, gif, webp, bmp; max 10 MB) y la ADJUNTA a la siguiente peticion al modelo en formato vision (base64). No devuelve el contenido: el modelo la ve en la siguiente llamada. El modelo configurado debe ser un modelo vision. Si la ejecucion termina antes de la siguiente llamada, la imagen no se envia.",
+  parameters: {
+    type: "object",
+    properties: {
+      path: { type: "string", description: "ruta de la imagen relativa al sandbox" }
+    },
+    required: ["path"]
+  },
+  async run(args, ctx) {
+    const { session, run } = ctx;
+    if (!run?.pendingImages) throw new Error("sin contexto de ejecucion");
+    const abs = resolveInSandbox(session.workdir, args.path, { mustExist: true });
+    const mime = IMAGE_MIME[path.extname(abs).toLowerCase()];
+    if (!mime) throw new Error(`formato no soportado: ${args.path} (usa png, jpg, jpeg, gif, webp o bmp)`);
+    const st = fs.statSync(abs);
+    if (st.size > MAX_IMAGE_BYTES) throw new Error(`imagen demasiado grande (${st.size} bytes); maximo ${MAX_IMAGE_BYTES} bytes`);
+    const entry = { path: relPath(session, abs), mime, bytes: st.size, b64: fs.readFileSync(abs).toString("base64") };
+    run.pendingImages.push(entry);
+    return `Imagen adjuntada a la proxima peticion al modelo: ${entry.path} (${mime}, ${fmtBytes(st.size)})`;
   }
 };
 

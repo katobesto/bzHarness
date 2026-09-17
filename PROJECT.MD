@@ -83,7 +83,8 @@ Flujo de un turno:
 ### `src/tools/` — herramientas del modelo
 - `index.js`: registro (`TOOLS` para el schema OpenAI) + `runTool(name, args, ctx)` (catch-all → `{ok, output}`).
 - `shell.js` `shell_exec {command, workdir?}`: `spawn(command, {shell:true, cwd})` en el sandbox; timeout `shellTimeoutMs` (mata árbol con `taskkill /T /F` en win32); salida combinada; log completo en `<workdir>/.bzharness/runs/<ts>-<slug>.log`; en la respuesta muestra hasta 30 000 chars. `approve(command)` → si `shellApproval` está activo, la UI pide OK/No.
-- `files.js` `file_read {path, startLine?, endLine?}`, `file_write {path, content}`, `file_edit {path, oldText, newText, replaceAll?}`.
+- `files.js` `file_read {path, offset?, limit?}`, `file_write {path, content}`, `file_edit {path, oldString, newString, replaceAll?}`, `image_read {path}` (vision: base64 → `run.pendingImages`, se inyecta como parte `image_url` en la siguiente llamada al LLM).
+- **Visión**: `agent.js` splicea `run.pendingImages` antes de cada `chatStream` y añade un mensaje `user` con `content: [{type:"text"}, {type:"image_url", url:"data:<mime>;base64,…"}]` (no se persiste en el transcript para no inflarlo); emite `image_attached` para la miniatura en la UI. `tokens.js → estimateImageTokens` lo cuenta en el presupuesto de contexto.
 - `search.js` `glob_files {pattern, path?}`, `grep_files {pattern, path?, include?}`.
 - **Todas** las rutas pasan por `util/contain.js → resolveInSandbox(workdir, p)`: resuelve contra el sandbox, niega `..`/absolutas fuera y revalida con `realpath` (anti-symlink). Violación → `SandboxError` → el modelo ve `VIOLACION DE SANDBOX: …`.
 
@@ -199,10 +200,10 @@ package.json        # + devDeps: electron, electron-builder; + "build" (electron
 | `src/config.js` | config + índice de sesiones |
 | `src/tools/index.js` | registro de tools + `runTool` |
 | `src/tools/shell.js` | `shell_exec` (spawn, timeout, logs, approval) |
-| `src/tools/files.js` | `file_read` / `file_write` / `file_edit` |
+| `src/tools/files.js` | `file_read` / `file_write` / `file_edit` / `image_read` (vision) |
 | `src/tools/search.js` | `glob_files` / `grep_files` |
 | `src/util/contain.js` | sandbox (resolve + realpath) |
-| `src/util/tokens.js` | estimación y recorte de historial |
+| `src/util/tokens.js` | estimación y recorte de historial (+`estimateImageTokens`) |
 | `public/index.html` | layout + modales |
 | `public/app.js` | UI: SSE, chips, popup, think, markdown |
 | `public/style.css` | tema |
