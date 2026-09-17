@@ -79,6 +79,13 @@ header {
   letter-spacing: -0.02em;
 }
 .brand span:not(.brand-mark) { color: var(--accent); }
+.brand .brand-by {
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  margin-left: 2px;
+}
 .brand-mark {
   display: inline-flex;
   align-items: center;
@@ -283,6 +290,7 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; background:
     var(--surface);
 }
 .welcome h2 { font-size: 22px; margin: 10px 0 6px; }
+.welcome .w-by { display: inline-block; margin-top: 3px; font-size: 12px; font-weight: 500; color: var(--faint); }
 .welcome p { color: var(--muted); font-size: 13.5px; margin: 0 0 18px; }
 .welcome .mono { color: var(--muted); }
 .w-logo {

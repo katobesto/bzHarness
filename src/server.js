@@ -450,7 +450,7 @@ export function startServer({ port = cfg.port, host = "127.0.0.1" } = {}) {
   return new Promise((resolve, reject) => {
     const server = app.listen(port, host, () => {
       const actual = server.address().port;
-      console.log(`bzHarness listo -> http://${host}:${actual}`);
+      console.log(`bzHarness by Benzo listo -> http://${host}:${actual}`);
       console.log(`  workdir por defecto: ${cfg.defaultWorkdir}`);
       console.log(`  LLM: ${cfg.baseUrl} (model: ${cfg.model || "auto"})`);
       resolve({ server, url: `http://${host}:${actual}`, port: actual });

@@ -846,7 +846,7 @@ async function init() {
         d.className = "welcome";
         d.innerHTML = `
           <div class="w-logo" aria-hidden="true">${SPARK}</div>
-          <h2>bzHarness</h2>
+          <h2>bzHarness <span class="w-by">by Benzo</span></h2>
           <p>Agente LLM con herramientas — shell, ficheros y búsqueda — confinado en un sandbox por sesión.</p>`;
         const btn = document.createElement("button");
         btn.className = "btn primary";

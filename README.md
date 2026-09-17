@@ -1,4 +1,4 @@
-# bzHarness
+# bzHarness by Benzo
 
 Chat harness local: interfaz web de chat (localhost) conectada a un LLM **OpenAI-compatible**, con ejecución de comandos, tool calls y creación/edición de ficheros. Cada sesión de chat se abre con su **carpeta de trabajo (sandbox)** y todo lo que el agente cree o ejecute queda **confinado a esa carpeta**.
 
