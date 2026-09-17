@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadConfig, saveConfig, maskConfig, loadIndex, saveIndex } from "./config.js";
 import { listModels } from "./llm.js";
 import { runAgent } from "./agent.js";
@@ -11,6 +11,7 @@ import { runAgent } from "./agent.js";
 const ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 let cfg = loadConfig();
 
+const SCRIPTS_DIR = process.env.HARNESS_SCRIPTS ? path.resolve(process.env.HARNESS_SCRIPTS) : path.join(ROOT, "scripts");
 const CRASH_LOG = path.join(ROOT, "config", "crash.log");
 function crashLog(kind, e) {
   try {
@@ -128,7 +129,7 @@ app.get("/api/workspaces", (req, res) =>
 
 app.post("/api/pick-dir", async (req, res) => {
   const start = typeof req.body?.start === "string" && req.body.start.trim() ? path.resolve(req.body.start.trim()) : "C:\\";
-  const script = path.join(ROOT, "scripts", "pick-dir.ps1");
+  const script = path.join(SCRIPTS_DIR, "pick-dir.ps1");
   let out = "";
   try {
     out = await new Promise((resolve) => {
@@ -357,8 +358,28 @@ app.post("/api/chat", async (req, res) => {
   res.end();
 });
 
-app.listen(cfg.port, "127.0.0.1", () => {
-  console.log(`bzHarness listo -> http://127.0.0.1:${cfg.port}`);
-  console.log(`  workdir por defecto: ${cfg.defaultWorkdir}`);
-  console.log(`  LLM: ${cfg.baseUrl} (model: ${cfg.model || "auto"})`);
-});
+export function startServer({ port = cfg.port, host = "127.0.0.1" } = {}) {
+  return new Promise((resolve, reject) => {
+    const server = app.listen(port, host, () => {
+      const actual = server.address().port;
+      console.log(`bzHarness listo -> http://${host}:${actual}`);
+      console.log(`  workdir por defecto: ${cfg.defaultWorkdir}`);
+      console.log(`  LLM: ${cfg.baseUrl} (model: ${cfg.model || "auto"})`);
+      resolve({ server, url: `http://${host}:${actual}`, port: actual });
+    });
+    server.on("error", reject);
+  });
+}
+
+let isCli = false;
+try {
+  isCli = pathToFileURL(path.resolve(process.argv[1] || "")).href === import.meta.url;
+} catch {
+  /* no cli */
+}
+if (isCli) {
+  startServer().catch((e) => {
+    console.error("bzHarness no pudo arrancar:", e && e.message);
+    process.exit(1);
+  });
+}

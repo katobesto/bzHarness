@@ -1,1 +1,56 @@
-﻿{"dependencies": {"express": "^4.21.2", "fast-glob": "^3.3.3"}, "description": "Chat harness local: LLM OpenAI-compatible, tool calls y sandbox por sesion", "engines": {"node": ">=20"}, "main": "src/server.js", "name": "bzharness", "private": true, "scripts": {"dev": "node --watch src/server.js", "smoke": "node scripts/smoke.js", "start": "node src/server.js"}, "type": "module", "version": "0.1.0"}
+{
+  "name": "bzharness",
+  "version": "0.1.0",
+  "description": "Chat harness local: LLM OpenAI-compatible, tool calls y sandbox por sesion",
+  "private": true,
+  "type": "module",
+  "main": "electron/main.cjs",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "smoke": "node scripts/smoke.js",
+    "electron:dev": "electron .",
+    "dist": "electron-builder --win"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "fast-glob": "^3.3.3"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.benjo.bzHarness",
+    "productName": "bzHarness",
+    "asar": true,
+    "npmRebuild": false,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "public/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "scripts",
+        "to": "scripts"
+      },
+      {
+        "from": "assets",
+        "to": "assets"
+      }
+    ],
+    "win": {
+      "target": "portable",
+      "icon": "assets/icon.ico",
+      "artifactName": "bzHarness-${version}-win-${arch}.${ext}"
+    }
+  }
+}

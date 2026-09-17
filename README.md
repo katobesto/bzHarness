@@ -22,6 +22,20 @@ npm run dev        # o: npm start
 
 O en Windows, doble clic en `start-harness.bat`: mata cualquier proceso que ocupe el puerto (se lee de `config/config.json`, por defecto `4321`), arranca `node src/server.js` y abre la web en el navegador.
 
+## Empaquetado (Windows)
+
+Genera un **exe portable** (sin Node, sin instalación) con Electron:
+
+```bash
+npm install          # incluye electron + electron-builder (devDeps)
+npm run dist         # -> dist/bzHarness-0.1.0-win-x64.exe
+```
+
+- El exe arranca el servidor en un puerto aleatorio de `127.0.0.1` y abre su propia ventana; la config vive en `%APPDATA%/bzHarness/config/`.
+- `npm run electron:dev` lo ejecuta desde el código fuente sin empaquetar.
+- Si `npm run dist` falla al extraer `winCodeSign` (symlinks), activa el **modo desarrollador** de Windows o ejecuta el build en terminal elevada.
+- El modo web/CLI (`npm run dev`) sigue funcionando en paralelo; los dos modos conviven (puertos distintos).
+
 Abre `http://127.0.0.1:4321` → **Configuración** → base URL + API key → (los modelos se detectan solos) → **Nueva sesión** → elige la carpeta de trabajo → chatea.
 
 Alternativa: variable de entorno `HARNESS_API_KEY` si no quieres guardar el token en disco.

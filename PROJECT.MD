@@ -115,7 +115,80 @@ Flujo de un turno:
 6. `npm run dev` arranca en `127.0.0.1:4321`; las sesiones viven en sus `workdir/.bzharness/` (el índice en `config/`). Borrar una sesión borra el transcript, no la carpeta.
 7. El streaming del proveedor puede incluir `: ping` (keep-alive SSE); el parser ya lo ignora. `reasoning_content` solo se ve si el modelo/gateway lo emite.
 
-## 5. Mapa de ficheros
+## 5. Empaquetado Electron (implementado) → `dist` Windows
+
+Objetivo: generar un `.exe` de Windows (electron-builder) que empaquete servidor + UI sin
+necesitar Node instalado. **El modo CLI (`npm run dev`) sigue funcionando igual.**
+
+### Arquitectura
+
+```
+electron/
+  main.cjs          # proceso principal (CJS, dynamic import del servidor ESM)
+package.json        # + devDeps: electron, electron-builder; + "build" (electron-builder);
+                    # scripts: "electron:dev" (electron .), "dist" (electron-builder --win)
+```
+
+1. **`src/server.js`**: refactor — extraer `startServer({ port = 0, host = "127.0.0.1" })`
+   que exporta el `http.Server` (con `close()`); el `app.listen(cfg.port, ...)` actual solo se
+   ejecuta cuando se importa como CLI (`import.meta.url === process.argv[1]` o flag). Puerto `0`
+   → asignado por el SO (sin colisiones con la instancia web existente); `startServer` resuelve
+   con `{ server, url }`.
+2. **`electron/main.cjs`**: crea `BrowserWindow` (frame normal, sin menu, `1280x800`,
+   `backgroundColor` del tema), setea `process.env.HARNESS_HOME = app.getPath("userData")`
+   y `HARNESS_SCRIPTS = process.resourcesPath/scripts`, importa `startServer()`, espera el
+   `listening` y `win.loadURL(url)`. Al cerrar: `server.close()` + kill de hijos + `app.quit()`.
+   `single-instance lock` (una sola ventana).
+3. **`src/config.js`**: `ROOT`/`CONFIG_DIR` respetan `HARNESS_HOME` si está definido
+   (packaged → `%APPDATA%/bzHarness`); sin la env, igual que hoy (raíz del repo). Defaults de
+   `defaultWorkdir`/presets en packaged: `%USERPROFILE%` (hoy: raíz del repo, que dentro del
+   asar no es un buen sandbox por defecto).
+4. **`scripts/` fuera del asar**: `powershell -File` NO puede leer dentro del asar.
+   electron-builder `extraResources: [{ from: "scripts", to: "scripts" }]`; el `pick-dir` de
+   `server.js` usa `HARNESS_SCRIPTS` si existe, si no `ROOT/scripts` (comportamiento CLI actual).
+5. **`public/` dentro del asar**: `express.static` funciona leyendo del asar (Electron parchea
+   `fs`), sin extraResources.
+6. **electron-builder** (`"build"` en package.json): `appId: com.benjo.bzHarness`,
+   `win: { target: [...] }` (NSIS y/o portable — **pendiente de decidir**), `asar: true`,
+   `files: ["src/**", "public/**", "electron/**", "package.json"]`, `npmRebuild: false`,
+   `electronDownload` mirror por defecto. `extraResources` como arriba.
+   DevDeps: `electron`, `electron-builder` (no van al asar ni al runtime).
+
+### Riesgos / notas
+
+- **ESM en main**: el main de Electron soporta ESM desde v28, pero se usa `main.cjs` +
+  `await import()` para máxima compatibilidad con electron-builder.
+- **`spawn` con `shell: true`** y `taskkill` funcionan igual en el packaged (usan el sistema).
+- **Ventana + fetch localhost**: `loadURL` a `http://127.0.0.1:<puerto>` evita CSP/file://;
+  no se necesita `webSecurity` desactivado.
+- **Icono**: pendiente (sin `.ico` en el repo → electron-builder usa el genérico; generar uno
+  o recibirlo del usuario).
+- **Porte fijo vs. 0**: en packaged, puerto aleatorio (`0`) — elimina el "puerto ocupado"
+  frente a la versión web; `start-harness.bat` sigue sirviendo para el modo CLI.
+- **Crash resiliencia**: los handlers `uncaughtException` de `server.js` siguen aplicando en
+  el packaged (mismo proceso).
+
+### Pasos de implementación (en orden)
+
+1. Refactor `server.js` → `startServer()` (mantener CLI idéntico; pasar `npm run smoke`).
+2. `config.js`: env `HARNESS_HOME` + defaults de `HARNESS_SCRIPTS`/workdir en packaged
+   (`app.isPackaged` no está disponible en el servidor → todo por env).
+3. `electron/main.cjs` + devDeps + scripts `electron:dev`/`dist`.
+4. Config electron-builder en `package.json`; primer `npm run dist` (NSIS/portable).
+5. Verificación: instalar/correr el exe, crear sesión, chatear, pick-dir, kill limpio.
+
+### Notas de build (Windows)
+
+- `npm run dist` (electron-builder) falla al extraer `winCodeSign` si el usuario NO tiene
+  privilegio de symlinks: **activar "Modo desarrollador"** (Configuración → Privacidad y
+  seguridad → Para desarrolladores) o lanzar el build **elevado** (UAC).
+- Sin firma de código: el exe portable sale sin firmar (SmartScreen lo avisará; normal).
+- `scripts/gen-icon.ps1` regenera `assets/icon.png` + `assets/icon.ico` (siglas BZH) con
+  System.Drawing, sin dependencias.
+- El exe crea su config en `%APPDATA%/bzHarness/config/` (HARNESS_HOME); `scripts/` y `assets/`
+  viajan en `resources/` (fuera del asar, para `pick-dir.ps1`).
+
+## 6. Mapa de ficheros
 
 | Fichero | Rol |
 |---|---|
@@ -137,5 +210,8 @@ Flujo de un turno:
 | `scripts/smoke.js` | tests de humo |
 | `scripts/pick-dir.ps1`, `scripts/FolderPick.cs` | selector nativo de carpetas |
 | `start-harness.bat` | arranque rápido (Windows): libera el puerto, lanza el servidor y abre el navegador |
+| `electron/main.cjs` | proceso principal Electron (window + startServer) |
+| `scripts/gen-icon.ps1` | regenera `assets/icon.png`/`.ico` (siglas BZH) |
+| `assets/icon.ico` | icono de la app (exe + ventana) |
 | `config/config.json` | config viva (gitignorada) |
 | `README.md` | doc de usuario |

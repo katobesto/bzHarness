@@ -2,25 +2,32 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
+const HOME = process.env.HARNESS_HOME ? path.resolve(process.env.HARNESS_HOME) : null;
+// En empaquetado (Electron) HARNESS_HOME apunta a %APPDATA%/bzHarness; en CLI, raíz del repo.
+const ROOT = HOME || path.resolve(fileURLToPath(new URL("..", import.meta.url)));
+const PACKAGED = !!HOME;
 const CONFIG_DIR = path.join(ROOT, "config");
 const CONFIG_PATH = path.join(CONFIG_DIR, "config.json");
 export const INDEX_PATH = path.join(CONFIG_DIR, "sessions-index.json");
 
-const DEFAULTS = {
-  baseUrl: "https://api.openrouter.ai/v1",
-  apiKey: "",
-  model: "auto",
-  maxContextTokens: 32000,
-  maxOutputTokens: 8192,
-  temperature: 0.2,
-  defaultWorkdir: ROOT,
-  workspacePresets: [ROOT],
-  shellApproval: false,
-  showThinking: false,
-  shellTimeoutMs: 60000,
-  port: 4321
-};
+function defaults() {
+  const wd = PACKAGED ? process.env.USERPROFILE || path.join(ROOT, "workspace") : ROOT;
+  return {
+    baseUrl: "https://api.openrouter.ai/v1",
+    apiKey: "",
+    model: "auto",
+    maxContextTokens: 32000,
+    maxOutputTokens: 8192,
+    temperature: 0.2,
+    defaultWorkdir: wd,
+    workspacePresets: [wd],
+    shellApproval: false,
+    showThinking: false,
+    shellTimeoutMs: 60000,
+    port: 4321
+  };
+}
+const DEFAULTS = defaults();
 
 function ensureConfigDir() {
   fs.mkdirSync(CONFIG_DIR, { recursive: true });
