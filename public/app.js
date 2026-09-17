@@ -8,6 +8,7 @@ let workspaces = null;
 let currentId = null;
 let busy = false;
 let approvalId = null;
+let attachments = [];
 
 const chatEl = $("#chat");
 
@@ -105,11 +106,12 @@ function scrollBottom() {
   chatEl.scrollTop = chatEl.scrollHeight;
 }
 
-function addUserBubble(text) {
+function addUserBubble(text, attached = []) {
   const el = document.createElement("div");
   el.className = "msg user";
   el.innerHTML = `<div class="bubble"></div>`;
-  el.querySelector(".bubble").innerHTML = esc(text);
+  const names = attached.map((a) => esc(a.name)).join(", ");
+  el.querySelector(".bubble").innerHTML = esc(text) + (names ? `<div class="u-att">📎 ${names}</div>` : "");
   chatEl.append(el);
   scrollBottom();
 }
@@ -356,16 +358,25 @@ function updateButtons() {
   $("#btnSend").disabled = busy || !currentId;
   $("#btnStop").disabled = !busy;
   $("#btnOpenDir").disabled = !currentId;
+  $("#btnAttach").disabled = busy;
   $("#input").disabled = busy;
 }
 
 async function sendMessage() {
   const text = $("#input").value.trim();
-  if (!text || busy || !currentId) return;
+  if ((!text && !attachments.length) || busy || !currentId) return;
+  const sentNames = attachments.map((a) => a.name);
+  try {
+    await uploadAttachments();
+  } catch (e) {
+    toast(e.message, true);
+    return;
+  }
+  const msgText = text || "He enviado los adjuntos marcados.";
   $("#input").value = "";
   const w = chatEl.querySelector(".welcome");
   if (w) w.remove();
-  addUserBubble(text);
+  addUserBubble(msgText, sentNames);
   let bubble = addAssistantBubble("");
   bubble.querySelector(".tcontent").innerHTML = '<span class="typing">…</span>';
   let chipsRow = null;
@@ -394,7 +405,7 @@ async function sendMessage() {
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ sessionId: currentId, message: text })
+      body: JSON.stringify({ sessionId: currentId, message: msgText })
     });
     if (!res.ok) {
       const e = await res.json().catch(() => ({}));
@@ -564,6 +575,7 @@ async function selectSession(id) {
   try {
     const s = await api(`/api/sessions/${id}`);
     currentId = id;
+    clearAttachments();
     await refreshSessions();
     closeToolDetail();
     chatEl.innerHTML = "";
@@ -697,6 +709,87 @@ async function saveConfig() {
 
 /* ---------- init ---------- */
 
+/* ---------- adjuntos (ficheros e imágenes) ---------- */
+
+const MAX_ATTACH = 8;
+const MAX_ATTACH_BYTES = 10 * 1024 * 1024;
+
+function bufToB64(buf) {
+  const bytes = new Uint8Array(buf);
+  let s = "";
+  const CH = 0x8000;
+  for (let i = 0; i < bytes.length; i += CH) s += String.fromCharCode.apply(null, bytes.subarray(i, i + CH));
+  return btoa(s);
+}
+
+function addFiles(fileList) {
+  for (const f of [...(fileList || [])]) {
+    if (attachments.length >= MAX_ATTACH) {
+      toast(`máximo ${MAX_ATTACH} adjuntos por mensaje`, true);
+      break;
+    }
+    if (f.size > MAX_ATTACH_BYTES) {
+      toast(`${f.name}: máximo 10 MB`, true);
+      continue;
+    }
+    const isImage = /^image\//.test(f.type || "");
+    attachments.push({ name: f.name, size: f.size, mime: f.type, isImage, file: f, url: isImage ? URL.createObjectURL(f) : null });
+  }
+  renderAttachments();
+}
+
+function renderAttachments() {
+  const row = $("#attachRow");
+  row.innerHTML = "";
+  attachments.forEach((a, i) => {
+    const chip = document.createElement("div");
+    chip.className = "attach";
+    if (a.isImage) {
+      const im = document.createElement("img");
+      im.src = a.url;
+      im.alt = a.name;
+      chip.append(im);
+    } else {
+      chip.insertAdjacentHTML(
+        "beforeend",
+        '<span class="a-file"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M6 2.5h8L19 7.5v14H6z"/><path d="M14 2.5V8h5"/></svg></span>'
+      );
+    }
+    const nm = document.createElement("span");
+    nm.className = "a-name";
+    nm.textContent = a.name;
+    nm.title = `${a.name} (${a.size} bytes)`;
+    const x = document.createElement("button");
+    x.className = "a-x";
+    x.title = "Quitar adjunto";
+    x.setAttribute("aria-label", "Quitar " + a.name);
+    x.textContent = "×";
+    x.onclick = () => {
+      if (a.url) URL.revokeObjectURL(a.url);
+      attachments.splice(i, 1);
+      renderAttachments();
+    };
+    chip.append(nm, x);
+    row.append(chip);
+  });
+  row.hidden = !attachments.length;
+}
+
+function clearAttachments() {
+  for (const a of attachments) if (a.url) URL.revokeObjectURL(a.url);
+  attachments = [];
+  renderAttachments();
+}
+
+async function uploadAttachments() {
+  if (!attachments.length) return;
+  const files = await Promise.all(
+    attachments.map(async (a) => ({ name: a.name, mime: a.mime, b64: bufToB64(await a.file.arrayBuffer()) }))
+  );
+  await api(`/api/sessions/${currentId}/upload`, { method: "POST", body: JSON.stringify({ files }) });
+  clearAttachments();
+}
+
 /* ---------- zoom de texto del chat ---------- */
 
 const ZOOM_MIN = 0.8, ZOOM_MAX = 1.5, ZOOM_STEP = 0.1;
@@ -823,6 +916,31 @@ $("#lightbox").addEventListener("click", (e) => {
 });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !$("#lightbox").hidden) closeLightbox();
+});
+
+/* adjuntos: botón, pegado y arrastrar-soltar */
+$("#btnAttach").onclick = () => $("#fileInput").click();
+$("#fileInput").onchange = (e) => {
+  addFiles(e.target.files);
+  e.target.value = "";
+};
+$("#input").addEventListener("paste", (e) => {
+  const fs2 = e.clipboardData?.files;
+  if (fs2 && fs2.length) {
+    e.preventDefault();
+    addFiles(fs2);
+  }
+});
+const composerEl = $(".composer");
+composerEl.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  composerEl.classList.add("drag");
+});
+composerEl.addEventListener("dragleave", () => composerEl.classList.remove("drag"));
+composerEl.addEventListener("drop", (e) => {
+  e.preventDefault();
+  composerEl.classList.remove("drag");
+  if (e.dataTransfer?.files?.length) addFiles(e.dataTransfer.files);
 });
 
 applyZoom();

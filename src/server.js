@@ -32,6 +32,7 @@ app.use(express.static(path.join(ROOT, "public"), { setHeaders: (res) => res.set
 
 const sessions = new Map();
 const activeRuns = new Map();
+const uploadQueue = new Map();
 
 function persistSession(session) {
   const dir = path.join(session.workdir, ".bzharness", "sessions");
@@ -222,6 +223,49 @@ app.get("/api/sessions/:id/file", (req, res) => {
   fs.createReadStream(abs).pipe(res);
 });
 
+const ATTACH_DIR = ".attachments";
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+const MAX_UPLOADS = 8;
+
+app.post("/api/sessions/:id/upload", (req, res) => {
+  const s = getOrLoad(req.params.id);
+  if (!s) return res.status(404).json({ error: "sesión no encontrada" });
+  const files = req.body?.files;
+  if (!Array.isArray(files) || !files.length) return res.status(400).json({ error: "files requerido" });
+  if (files.length > MAX_UPLOADS) return res.status(400).json({ error: `máximo ${MAX_UPLOADS} ficheros por mensaje` });
+  const dir = path.join(s.workdir, ATTACH_DIR);
+  fs.mkdirSync(dir, { recursive: true });
+  const saved = [];
+  for (const f of files) {
+    if (typeof f?.name !== "string" || typeof f?.b64 !== "string") return res.status(400).json({ error: "fichero inválido" });
+    let name = path.basename(f.name).replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_").slice(0, 80).trim();
+    if (!name || name.startsWith(".")) return res.status(400).json({ error: "nombre de fichero inválido: " + f.name });
+    const buf = Buffer.from(f.b64, "base64");
+    if (!buf.length) return res.status(400).json({ error: `fichero vacío: ${name}` });
+    if (buf.length > MAX_UPLOAD_BYTES) return res.status(413).json({ error: `fichero demasiado grande: ${name} (máx 10 MB)` });
+    let rel = name, n = 1;
+    while (fs.existsSync(path.join(dir, rel))) {
+      const dot = name.lastIndexOf(".");
+      rel = dot > 0 ? `${name.slice(0, dot)} (${n})${name.slice(dot)}` : `${name} (${n})`;
+      n++;
+    }
+    fs.writeFileSync(path.join(dir, rel), buf);
+    const mime = f.mime || "application/octet-stream";
+    const isImage = /^image\/(png|jpe?g|gif|webp|bmp)$/.test(mime);
+    saved.push({
+      relPath: `${ATTACH_DIR}/${rel}`,
+      mime,
+      bytes: buf.length,
+      image: isImage,
+      b64: isImage ? f.b64 : undefined
+    });
+  }
+  const q = uploadQueue.get(s.id) || [];
+  q.push(...saved);
+  uploadQueue.set(s.id, q);
+  res.json({ ok: true, files: saved.map(({ b64, ...x }) => x) });
+});
+
 app.delete("/api/sessions/:id", (req, res) => {
   const id = req.params.id;
   const s = getOrLoad(id);
@@ -355,7 +399,15 @@ app.post("/api/chat", async (req, res) => {
 
   let aborted = false;
   try {
-    await runAgent({ cfg, model, session, userMessage: String(message), emit, signal: ac.signal, run, approve, onCall, onRetry, onThink });
+    let userMessage = String(message);
+    const up = uploadQueue.get(session.id);
+    if (up && up.length) {
+      uploadQueue.delete(session.id);
+      for (const u of up) if (u.image) run.pendingImages.push({ path: u.relPath, mime: u.mime, bytes: u.bytes, b64: u.b64 });
+      const refs = up.map((u) => u.relPath + (u.image ? " (imagen)" : "")).join(", ");
+      userMessage += `\n\n[Adjuntos que acabas de enviar, copiados al sandbox: ${refs}]`;
+    }
+    await runAgent({ cfg, model, session, userMessage, emit, signal: ac.signal, run, approve, onCall, onRetry, onThink });
   } catch (e) {
     if (e?.name === "AbortError" || ac.signal.aborted) aborted = true;
     else {

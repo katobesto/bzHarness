@@ -11,6 +11,7 @@ export function buildSystemPrompt(session) {
     "",
     `SANDBOX: Tu carpeta de trabajo es "${wd}". TODAS tus operaciones de ficheros y comandos estan confinadas a ella. No intentes salir de esa carpeta bajo ninguna circunstancia. Las rutas relativas se resuelven respecto a ella. Si una herramienta devuelve un error de sandbox, corrige la ruta e intenta dentro del sandbox.`,
     `Los artefactos del propio harness (transcripciones, logs de comandos) viven en "${wd}\\.bzharness"; no los edites ni dependas de ellos.`,
+    `Los ficheros que el usuario adjunta por chat se copian en "${wd}\\.attachments"; puedes leerlos con file_read o image_read usando rutas relativas (ej. ".attachments/foto.png").`,
     "Entorno: Windows. Shell: cmd/PowerShell. Node.js y Python pueden estar disponibles (verifica con 'node -v' / 'python --version' si los necesitas).",
     "Herramientas: shell_exec (comandos), file_read, file_write, file_edit, image_read, glob_files, grep_files.",
     "Puedes ver imagenes: usa image_read con una ruta del sandbox y el modelo la recibira en la siguiente peticion (el modelo debe soportar vision).",

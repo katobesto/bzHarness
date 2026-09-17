@@ -48,9 +48,14 @@
       <div id="chat" class="chat"></div>
       <div class="composer-wrap">
         <div class="composer">
-          <textarea id="input" rows="2" placeholder="Pregunta al agente…"></textarea>
+          <textarea id="input" rows="2" placeholder="Pregunta al agente… (pega o arrastra ficheros para adjuntarlos)"></textarea>
+          <div class="attach-row" id="attachRow" hidden></div>
           <div class="composer-actions">
-            <span class="composer-hint">Enter envía · Shift+Enter salto de línea</span>
+            <span class="composer-hint">Enter envía · Shift+Enter salto · Ctrl+V / arrastrar adjunta</span>
+            <button id="btnAttach" class="icon-btn" title="Adjuntar ficheros (imágenes, código, datos…)" disabled>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11.5l-7.4 7.4a5 5 0 0 1-7.1-7.1L13 4.3a3.4 3.4 0 0 1 4.8 4.8L10.5 16.4a1.4 1.4 0 0 1-2-2l6.4-6.3"/></svg>
+            </button>
+            <input type="file" id="fileInput" multiple hidden />
             <div class="zoom-ctrl" role="group" aria-label="Tamaño del texto del chat">
               <button id="btnZoomOut" class="icon-btn zoom" title="Reducir tamaño del texto" disabled>A−</button>
               <button id="btnZoomIn" class="icon-btn zoom" title="Aumentar tamaño del texto">A+</button>

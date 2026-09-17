@@ -11,6 +11,7 @@ Chat harness local: interfaz web de chat (localhost) conectada a un LLM **OpenAI
 - **Sesiones con sandbox**: cada sesión declara su `workdir`; las tools de fichero y los comandos no pueden salir de ella (defensa contra `..`, rutas absolutas y symlinks)
 - Herramientas (tool calls): `shell_exec`, `file_read`, `file_write`, `file_edit`, `image_read`, `glob_files`, `grep_files`
 - **Visión**: `image_read` lee una imagen del sandbox (`png/jpg/gif/webp/bmp`, máx 10 MB) y la adjunta a la siguiente petición al modelo en el formato vision estándar (`content: [{type:"text"},{type:"image_url", url:"data:<mime>;base64,…"}]`). Requiere un modelo con visión (p. ej. `gpt-4o`, `claude`, `gemini`); la UI muestra la miniatura en el chat
+- **Adjuntos en el chat**: pega (Ctrl+V), arrastra o usa el botón 📎 para adjuntar ficheros al mensaje (máx 8, 10 MB c/u). Se copian a `<workdir>/.attachments/` y el mensaje incluye la referencia; las imágenes se envían además al LLM en formato vision
 - Artefactos del agente en `<workdir>/.bzharness/` (transcript de la sesión + logs completos de comandos)
 - Opcional: aprobación manual de comandos shell desde la UI
 
@@ -69,6 +70,7 @@ W/
   .bzharness/            # creada por el harness (con .gitignore interno)
     sessions/<id>.json   # transcript + metadatos de la sesión
     runs/<ts>-<cmd>.log  # salida completa de cada shell_exec
+    .attachments/        # ficheros e imágenes que el usuario adjunta por chat
   ...resto de ficheros generados por el agente
 ```
 
@@ -86,6 +88,7 @@ W/
 - `POST /api/sessions` `{name?, workdir, model?}`
 - `GET /api/sessions` · `GET/DELETE /api/sessions/:id`
 - `GET /api/sessions/:id/file?path=` — sirve una **imagen** del sandbox (para las miniaturas del chat); solo `png/jpg/gif/webp/bmp`, máx 15 MB
+- `POST /api/sessions/:id/upload` `{files:[{name, mime, b64}]}` — copia los adjuntos a `<workdir>/.attachments/` (máx 8 ficheros, 10 MB c/u); el siguiente `POST /api/chat` los adjunta (imágenes en formato vision + referencia en el mensaje)
 - `POST /api/chat` `{sessionId, message}` → SSE: `token`, `tool_call`, `tool_result`, `image_attached`, `approval_request`, `done`, `end`, `error`
 - `POST /api/approvals/:id` `{approved}` · `POST /api/stop/:sessionId`
 
