@@ -1,7 +1,7 @@
 @echo off
-rem Arranca bzHarness: mata cualquier proceso ocupando el puerto (segun config.json, por defecto 4321),
-rem lanza node src\server.js y abre la web en el navegador.
-setlocal
-cd /d "%~dp0"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$port=4321; try { $c = Get-Content 'config\config.json' -Raw -Encoding UTF8 | ConvertFrom-Json; if ($c.port) { $port=[int]$c.port } } catch {}; $cs = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue; if ($cs) { $cs | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Write-Host ('Puerto ' + $port + ' ocupado por PID ' + $_ + ' -> matando'); Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }; $i=0; while ((Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue) -and $i -lt 10) { Start-Sleep -Milliseconds 500; $i++ } } else { Write-Host ('Puerto ' + $port + ' libre') }; Write-Host ('Arrancando server.js en http://127.0.0.1:' + $port); Start-Process -FilePath 'node' -ArgumentList 'src\server.js'; $i=0; while ($i -lt 40) { if (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue) { break }; Start-Sleep -Milliseconds 500; $i++ }; if (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue) { $t = [int][double]::Parse((Get-Date -UFormat %s)); Start-Process ('http://127.0.0.1:' + $port + '/?t=' + $t) } else { Write-Host 'Timeout: el servidor no escucho en el puerto ' + $port }"
+rem Arranca bzHarness: mata cualquier proceso ocupando el puerto (segun config.json,
+rem por defecto 4321), lanza node src\server.js y abre la web en el navegador.
+rem Toda la logica esta en start-harness.ps1 (sin '%' en el comando: un '%' a medio
+rem linea en un .bat se expande mal por cmd y rompe el argumento de PowerShell).
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0start-harness.ps1"
 endlocal
