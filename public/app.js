@@ -710,6 +710,9 @@ function applyZoom() {
 function bumpZoom(delta) {
   chatZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round((chatZoom + delta) * 10) / 10));
   localStorage.setItem("bz.chatZoom", String(chatZoom));
+  applyZoom();
+}
+
 /* ---------- visor de imágenes ---------- */
 
 function openLightbox(src, caption) {
@@ -723,9 +726,6 @@ function closeLightbox() {
   $("#lbImg").src = "";
 }
 
-applyZoom();
-}
-
 /* ---------- barra lateral ---------- */
 
 function setAsideHidden(hidden) {
@@ -734,42 +734,49 @@ function setAsideHidden(hidden) {
 }
 
 async function init() {
-  try {
-    config = await api("/api/config");
-    const m = await api("/api/models");
-    models = m.models || [];
-    modelError = m.error;
-    workspaces = await api("/api/workspaces");
-    updateModelBadge();
-    if (modelError) toast(`Detección de modelos: ${modelError}`, true);
-    const list = await refreshSessions();
-    if (list.length) await selectSession(list[0].id);
-    else {
-      currentId = null;
-      chatEl.innerHTML = "";
-      const d = document.createElement("div");
-      d.className = "welcome";
-      d.innerHTML = `
-        <div class="w-logo" aria-hidden="true">${SPARK}</div>
-        <h2>bzHarness</h2>
-        <p>Agente LLM con herramientas — shell, ficheros y búsqueda — confinado en un sandbox por sesión.</p>`;
-      const btn = document.createElement("button");
-      btn.className = "btn primary";
-      btn.textContent = "Nueva sesión";
-      btn.onclick = openNewSessionModal;
-      d.append(btn);
-      const steps = document.createElement("div");
-      steps.className = "w-steps";
-      steps.innerHTML = `
-        <div class="w-step"><span class="n">1</span><b>Configura el LLM</b><span>Base URL OpenAI-compatible, API key y modelo.</span></div>
-        <div class="w-step"><span class="n">2</span><b>Crea una sesión</b><span>Elige la carpeta de trabajo: será el sandbox del agente.</span></div>
-        <div class="w-step"><span class="n">3</span><b>Chatea</b><span>El agente ejecuta comandos y edita ficheros dentro del sandbox.</span></div>`;
-      d.append(steps);
-      chatEl.append(d);
+  let lastErr = null;
+  for (let i = 0; i < 5; i++) {
+    try {
+      config = await api("/api/config");
+      const m = await api("/api/models");
+      models = m.models || [];
+      modelError = m.error;
+      workspaces = await api("/api/workspaces");
+      updateModelBadge();
+      if (modelError) toast(`Detección de modelos: ${modelError}`, true);
+      const list = await refreshSessions();
+      if (list.length) await selectSession(list[0].id);
+      else {
+        currentId = null;
+        chatEl.innerHTML = "";
+        const d = document.createElement("div");
+        d.className = "welcome";
+        d.innerHTML = `
+          <div class="w-logo" aria-hidden="true">${SPARK}</div>
+          <h2>bzHarness</h2>
+          <p>Agente LLM con herramientas — shell, ficheros y búsqueda — confinado en un sandbox por sesión.</p>`;
+        const btn = document.createElement("button");
+        btn.className = "btn primary";
+        btn.textContent = "Nueva sesión";
+        btn.onclick = openNewSessionModal;
+        d.append(btn);
+        const steps = document.createElement("div");
+        steps.className = "w-steps";
+        steps.innerHTML = `
+          <div class="w-step"><span class="n">1</span><b>Configura el LLM</b><span>Base URL OpenAI-compatible, API key y modelo.</span></div>
+          <div class="w-step"><span class="n">2</span><b>Crea una sesión</b><span>Elige la carpeta de trabajo: será el sandbox del agente.</span></div>
+          <div class="w-step"><span class="n">3</span><b>Chatea</b><span>El agente ejecuta comandos y edita ficheros dentro del sandbox.</span></div>`;
+        d.append(steps);
+        chatEl.append(d);
+      }
+      lastErr = null;
+      break;
+    } catch (e) {
+      lastErr = e;
+      await new Promise((r) => setTimeout(r, 1500));
     }
-  } catch (e) {
-    toast(e.message, true);
   }
+  if (lastErr) toast(lastErr.message, true);
   updateButtons();
 }
 
