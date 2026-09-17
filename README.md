@@ -59,6 +59,7 @@ Alternativa: variable de entorno `HARNESS_API_KEY` si no quieres guardar el toke
 | `showThinking` | `true` → la UI muestra el razonamiento: "esperando al modelo…" (pulso) → "Thinking: última frase" (pulso, colapsado, desplegable) → al empezar la respuesta la etiqueta Thinking desaparece |
 | `shellApproval` | `true` → la UI pide aprobación antes de cada comando shell |
 | `shellTimeoutMs` | Timeout por comando (el proceso se mata y se marca TIMEOUT) |
+| `llmIdleTimeoutMs` | Silencio máximo del stream del LLM (default 90000): si el gateway deja de enviar sin cerrar, se corta la conexión y se reintenta |
 | `port` | Puerto del servidor (cambios requieren reiniciar) |
 
 ## Sandbox por sesión

@@ -39,20 +39,20 @@ Navegador (public/)                     Node (src/)
 Flujo de un turno:
 1. UI → `POST /api/chat {sessionId, message}`. El servidor responde `Content-Type: text/event-stream`.
 2. `server.js` crea un `AbortController` + `run` (child processes, aprobaciones, log de llamadas) y llama a `runAgent`.
-3. `agent.js` itera (máx. 8): construye `messages` (system + historial recortado por `util/tokens.js`), llama a `chatStream` y, si el asistente devuelve `tool_calls`, ejecuta cada tool y añade los `role:"tool"` al historial. Sin `tool_calls` → fin.
-4. Cada suceso se emite a la UI como evento SSE: `token`, `think`, `tool_call`, `tool_result`, `approval_request`, `retry`, `error`, `done`, `end`.
+3. `agent.js` itera (máx. 8): construye `messages` (system + historial recortado por `util/tokens.js`), llama a `chatStream` y, si el asistente devuelve `tool_calls`, ejecuta cada tool y añade los `role:"tool"` al historial. Sin `tool_calls` → fin. **Respuesta vacía** (sin contenido ni `tool_calls`): no se da por terminado en silencio; se reintenta hasta 2 veces (evento `notice`) y si el 3º intento sigue vacío se emite `error` visible.
+4. Cada suceso se emite a la UI como evento SSE: `token`, `think`, `tool_call`, `tool_result`, `approval_request`, `retry`, `notice`, `error`, `done`, `end`.
 5. Al terminar, el transcript se persiste en `<workdir>/.bzharness/sessions/<id>.json` y el índice global en `config/sessions-index.json`.
 
 ## 3. Módulos principales
 
 ### `src/config.js`
 - `DEFAULTS` + merge con `config/config.json` (`loadConfig`); `saveConfig(patch)` valida y reescribe.
-- Claves: `baseUrl`, `apiKey` (o env `HARNESS_API_KEY`), `model` (`auto` o id), `maxContextTokens`, `maxOutputTokens`, `temperature`, `defaultWorkdir`, `workspacePresets`, `showThinking`, `shellApproval`, `shellTimeoutMs`, `port`.
+- Claves: `baseUrl`, `apiKey` (o env `HARNESS_API_KEY`), `model` (`auto` o id), `maxContextTokens`, `maxOutputTokens`, `temperature`, `defaultWorkdir`, `workspacePresets`, `showThinking`, `shellApproval`, `shellTimeoutMs`, `llmIdleTimeoutMs` (opcional, default 90000), `port`.
 - `loadIndex/saveIndex`: índice global de sesiones.
 
 ### `src/llm.js` — cliente LLM
-- `chatStream(cfg, body, {onDelta, onThink, signal, onCall, onRetry})`: **bucle de reintentos** (máx. 4) ante 408/429/5xx o fallo de red, backoff 1.5 s/4 s/8 s, respeta `retry-after` (máx. 30 s).
-- `chatStreamOnce`: fetch POST a `joinBase(baseUrl, "/chat/completions")` con `stream:true`; parser SSE manual (líneas `data: …`, tolera keep-alives `: ping`, ignora `[DONE]`). Acumula `delta.content` → `onDelta`, `delta.reasoning_content`/`delta.reasoning` → `onThink`, y `delta.tool_calls[]` por índice (id + name + arguments concatenados).
+- `chatStream(cfg, body, {onDelta, onThink, signal, onCall, onRetry})`: **bucle de reintentos** (máx. 4) ante 408/429/5xx, fallo de red o silencio de stream, backoff 1.5 s/4 s/8 s, respeta `retry-after` (máx. 30 s).
+- `chatStreamOnce`: fetch POST a `joinBase(baseUrl, "/chat/completions")` con `stream:true`; parser SSE manual (líneas `data: …`, tolera keep-alives `: ping`, ignora `[DONE]`). Acumula `delta.content` → `onDelta`, `delta.reasoning_content`/`delta.reasoning` → `onThink`, y `delta.tool_calls[]` por índice (id + name + arguments concatenados). **Watchdog de silencio**: un `AbortController` interno se rearme con cada chunk; si el stream del gateway va `llmIdleTimeoutMs` (default 90 s, `LLM_IDLE_TIMEOUT_MS`) sin enviar nada —ni tokens ni `[DONE]`— se corta la conexión y se lanza `LLMError` reintentable (`status: null`): evita ejecuciones colgadas para siempre si el proveedor muere a mitad de stream.
 - **`sanitizeLLMBody`** (antes de enviar): normaliza CRLF→LF, borra control chars y repara tags `</` incompletos al final de cadenas. **NO trunca nada** (decisión explícita del usuario: no perder contexto).
 - Errores → `LLMError` con `detail` (ts, url, status, headers, responseBody 20 KB, resumen de la petición, baseUrl) que la UI y el log de errores usan.
 - `listModels(cfg)`: GET `/models` relativo a `baseUrl`.
@@ -63,6 +63,7 @@ Flujo de un turno:
 - `buildSystemPrompt(session)`: identidad + sandbox + políticas (no salir del sandbox, usar `shell_exec` para comandos, etc.).
 - Presupuesto de contexto: `maxContextTokens - tokens(system) - min(maxOutputTokens, 8192)` (mín. 4000); `trimHistory` recorta por el **inicio** preservando el par asistente→tool consistente.
 - Errores de tool NUNCA lanzan: `runTool` los convierte en `{ok:false, output}` para que el modelo pueda autocorregirse.
+- **Guardia de respuesta vacía**: si `chatStream` resuelve sin `content` ni `tool_calls` (el modelo "terminó" sin producir nada), no se rompe el turno en silencio: se emite `notice` y se reintenta hasta 2 veces; si el 3º intento también es vacío se persiste el mensaje vacío, se añade un `role:"error"` al transcript y se emite `error` al usuario.
 
 ### `src/server.js` — API + ciclo de vida
 - Endpoints (solo localhost):
@@ -97,7 +98,7 @@ Flujo de un turno:
 - `index.html`: layout (aside de sesiones + chat + composer), modales: nueva sesión (solo **ruta + Examinar + presets** — el explorador de carpetas web fue retirado; `Examinar` abre el selector nativo de Windows vía `/api/pick-dir`), configuración (incluye el check **"Mostrar cadena de pensamiento"**), aprobación de comandos.
 - `vendor/` (vendado, sin CDN en runtime): `marked` (markdown), `highlight.js` + tema GitHub Dark, `DOMPurify`.
 - `app.js` (ESM, ~600 líneas):
-  - `consumeSSE` (parsea bloques `data: …` separados por `\n\n`) y manejadores: `token` (pinta con `inlineMd` —render rápido—), `think` (máquina de estados wait→think→answer: al primer token de pensamiento quita el "esperando al modelo" y muestra la `.thinkwrap` con etiqueta `Thinking: <última frase>`; al primer token de respuesta la etiqueta Thinking desaparece), `tool_call`/`tool_result` (chips), `approval_request` (modal), `retry`, `error` (burbuja + `+ info`), `done` (al terminar el turno, `finalizeTurn` re-renderiza el globo con **`fullMD`**: marked + DOMPurify + highlight.js). `fullMD` aplica antes `fixTables`: repara tablas GFM a las que el LLM les omite la fila separadora `|---|---|` (y respeta los fences de código). Estados "en vivo" (esperando al modelo, pensando, tool en curso) usan la clase compartida **`.bz-pulse`** (keyframes `bzPulse`: color/opacidad blanco→gris, tipo latido).
+  - `consumeSSE` (parsea bloques `data: …` separados por `\n\n`) y manejadores: `token` (pinta con `inlineMd` —render rápido—), `think` (máquina de estados wait→think→answer: al primer token de pensamiento quita el "esperando al modelo" y muestra la `.thinkwrap` con etiqueta `Thinking: <última frase>`; al primer token de respuesta la etiqueta Thinking desaparece), `tool_call`/`tool_result` (chips), `approval_request` (modal), `retry`, `notice` (toast transitorio: avisos como "respuesta vacía, reintentando"), `error` (burbuja + `+ info`), `done` (al terminar el turno, `finalizeTurn` re-renderiza el globo con **`fullMD`**: marked + DOMPurify + highlight.js). `fullMD` aplica antes `fixTables`: repara tablas GFM a las que el LLM les omite la fila separadora `|---|---|` (y respeta los fences de código). Estados "en vivo" (esperando al modelo, pensando, tool en curso) usan la clase compartida **`.bz-pulse`** (keyframes `bzPulse`: color/opacidad blanco→gris, tipo latido).
 - **Chips de tools**: píldoras `icono + verbo` (Read/Write/Edit/Shell/Glob/Grep) que flotan en horizontal; clic → **detalle inline** (`.tooldetail`) justo bajo la fila de chips, con args/salida y resaltado. `shell_exec` muestra el **comando** como bloque bash resaltado; `file_write` muestra **ruta + contenido en bruto** (con resaltado según extensión) en lugar del JSON.
 - `toolStore` (Map id → {name,args,output,ok}) alimenta el detalle inline y se actualiza en vivo mientras la ejecución continúa.
   - **think**: solo se emite si `showThinking` está activo en config (el servidor no envía `think` si no). Máquina de estados por globo: **wait** → "esperando al modelo…" aislado (`.typing.bz-pulse`); **think** (primer token de `reasoning_content`) → desaparece el "esperando" y aparece `.thinkwrap` colapsada con etiqueta `Thinking: <última frase>` (helper `lastSentence`, una línea, `text-overflow: ellipsis`, pulso) y botón `.t-expand` que despliega el `.thinkbox` completo; **answer** (primer token de contenido) → la etiqueta "Thinking" desaparece (queda la frase final estática, aún desplegable).

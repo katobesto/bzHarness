@@ -117,20 +117,64 @@ function reqSummary(body) {
   };
 }
 
+// Silencio maximo tolerado del stream del gateway (sin tokens ni cierre). Si se
+// supera, se corta la conexion y se lanza LLMError (reintentable): evita que una
+// ejecucion se quede colgada para siempre si el proveedor deja de enviar sin avisar.
+export const LLM_IDLE_TIMEOUT_MS = 90000;
+
 async function chatStreamOnce(cfg, body, { onDelta, onThink, signal, onCall } = {}) {
   sanitizeLLMBody(body);
   const t0 = Date.now();
   const url = joinBase(cfg.baseUrl, "/chat/completions");
+  const idleMs = Number(cfg.llmIdleTimeoutMs) > 0 ? Number(cfg.llmIdleTimeoutMs) : LLM_IDLE_TIMEOUT_MS;
+
+  // watchdog de silencio: aborta si el stream no envia nada en idleMs
+  const ctl = new AbortController();
+  let idleTimer = null;
+  let idleFired = false;
+  const armIdle = () => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      idleFired = true;
+      ctl.abort();
+    }, idleMs);
+  };
+  const onExternalAbort = () => {
+    if (idleTimer) clearTimeout(idleTimer);
+    ctl.abort();
+  };
+  const disarm = () => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = null;
+    signal?.removeEventListener("abort", onExternalAbort);
+  };
+  signal?.addEventListener("abort", onExternalAbort, { once: true });
+  const timeoutDetail = () => ({
+    ts: new Date().toISOString(),
+    url,
+    status: null, // reintentable (no es un fallo HTTP del proveedor)
+    note: `silencio de stream > ${Math.round(idleMs / 1000)}s`,
+    error: `El stream del gateway se quedo ${Math.round(idleMs / 1000)}s en silencio (sin tokens ni cierre); se corto la conexion`,
+    request: reqSummary(body),
+    baseUrl: cfg.baseUrl,
+    durationMs: Date.now() - t0
+  });
+  armIdle();
   let res;
   try {
     res = await fetch(url, {
       method: "POST",
       headers: { ...headers(cfg), "content-type": "application/json" },
       body: JSON.stringify({ ...body, stream: true }),
-      signal
+      signal: ctl.signal
     });
   } catch (e) {
-    if (signal?.aborted) throw e;
+    if (signal?.aborted) throw e; // parada del usuario
+    if (idleFired) {
+      const d = timeoutDetail();
+      onCall?.({ ok: false, status: null, error: d.error, model: body.model, durationMs: d.durationMs });
+      throw new LLMError(d.error, d);
+    }
     const detail = {
       ts: new Date().toISOString(),
       url,
@@ -144,7 +188,10 @@ async function chatStreamOnce(cfg, body, { onDelta, onThink, signal, onCall } = 
     throw new LLMError(`No se pudo conectar al LLM: ${e.message}`, detail);
   }
   if (!res.ok) {
-    if (signal?.aborted) throw new Error("AbortError");
+    if (signal?.aborted) {
+      disarm();
+      throw new Error("AbortError");
+    }
     const raw = await res.text().catch(() => "");
     const durationMs = Date.now() - t0;
     const ra = res.headers.get("retry-after");
@@ -163,6 +210,7 @@ async function chatStreamOnce(cfg, body, { onDelta, onThink, signal, onCall } = 
     onCall?.({ ok: false, status: res.status, error: snippetSync(raw), model: body.model, durationMs });
     throw new LLMError(`LLM HTTP ${res.status}: ${snippetSync(raw)}`, detail);
   }
+  disarm(); // ya hay respuesta del gateway: el watchdog sigue activo pero se gestiona en la lectura
 
   const dec = new TextDecoder();
   const reader = res.body.getReader();
@@ -206,19 +254,41 @@ async function chatStreamOnce(cfg, body, { onDelta, onThink, signal, onCall } = 
     }
   };
 
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (signal?.aborted) break;
-    buf += dec.decode(value, { stream: true });
-    let nl;
-    while ((nl = buf.indexOf("\n")) >= 0) {
-      const line = buf.slice(0, nl);
-      buf = buf.slice(nl + 1);
-      processLine(line);
+  const streamRead = async () => {
+    for (;;) {
+      let chunk;
+      try {
+        chunk = await reader.read();
+      } catch (e) {
+        if (signal?.aborted) break; // parada del usuario
+        if (idleFired) {
+          const d = timeoutDetail();
+          onCall?.({ ok: false, status: null, error: d.error, model: body.model, durationMs: d.durationMs });
+          throw new LLMError(d.error, d);
+        }
+        throw e;
+      }
+      const { done, value } = chunk;
+      if (done) break;
+      if (signal?.aborted) break;
+      armIdle(); // reinicia el watchdog por cada chunk recibido
+      buf += dec.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl);
+        buf = buf.slice(nl + 1);
+        processLine(line);
+      }
     }
+    if (buf.trim()) processLine(buf);
+  };
+
+  try {
+    await streamRead();
+  } finally {
+    if (idleTimer) clearTimeout(idleTimer);
+    signal?.removeEventListener("abort", onExternalAbort);
   }
-  if (buf.trim()) processLine(buf);
   onCall?.({ ok: true, status: res.status, model: body.model, durationMs: Date.now() - t0 });
 
   const tool_calls = [...tcs.values()]
@@ -276,4 +346,4 @@ export async function chatStream(cfg, body, opts = {}) {
   }
 }
 
-export { estimateMsgTokens };
+export { estimateMsgTokens, sleepAbortable };

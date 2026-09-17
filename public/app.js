@@ -554,6 +554,7 @@ async function sendMessage() {
         bubble.querySelector(".tcontent").innerHTML = `<span class="typing bz-pulse">… gateway inestable, reintento ${ev.attempt}/${max}</span>`;
         scrollBottom();
       },
+      notice: (ev) => toast(ev.message || "Aviso del harness"),
       error: (ev) => addErrorBubble("⚠ " + ev.message, ev.detail),
       done: (ev) => {
         if (ev.aborted) toast("Ejecución detenida", true);

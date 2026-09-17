@@ -1,5 +1,5 @@
 import { TOOLS, runTool } from "./tools/index.js";
-import { chatStream } from "./llm.js";
+import { chatStream, sleepAbortable } from "./llm.js";
 import { estimateMsgTokens, estimateImageTokens, trimHistory } from "./util/tokens.js";
 
 const MAX_ITER = 12;
@@ -46,6 +46,7 @@ export async function runAgent({ cfg, model, session, userMessage, emit, signal,
     cfg.maxContextTokens - estimateMsgTokens({ content: system }) - Math.min(cfg.maxOutputTokens, 8192)
   );
 
+  let emptyStreak = 0;
   try {
     for (let iter = 0; iter < MAX_ITER; iter++) {
       if (signal?.aborted) break;
@@ -87,12 +88,30 @@ export async function runAgent({ cfg, model, session, userMessage, emit, signal,
         },
         { onDelta: (t) => emit({ type: "token", content: t }), onThink, signal, onCall, onRetry }
       );
+
+      const msgText = String(msg.content ?? "").trim();
+      if (!msg.tool_calls?.length && !msgText) {
+        // El modelo termino sin contenido ni herramientas: no dar por terminado en silencio.
+        // Se reintenta hasta 2 veces; si sigue vacio, se notifica al usuario.
+        emptyStreak++;
+        if (emptyStreak <= 2) {
+          emit({ type: "notice", message: `El modelo devolvio una respuesta vacia - reintento ${emptyStreak}/2` });
+          await sleepAbortable(2000, signal);
+          continue;
+        }
+        session.messages.push(msg);
+        const m = "El modelo termino sin producir respuesta ni acciones (3 intentos). Reenvia el mensaje o prueba con otro modelo.";
+        session.messages.push({ role: "error", content: "⚠ " + m });
+        emit({ type: "error", message: m });
+        break;
+      }
+      emptyStreak = 0;
       session.messages.push(msg);
       if (!msg.tool_calls?.length) break;
 
       for (const tc of msg.tool_calls) {
         if (signal?.aborted) break;
-        let args = {};
+let args = {};
         try {
           args = JSON.parse(tc.function.arguments || "{}");
         } catch {
