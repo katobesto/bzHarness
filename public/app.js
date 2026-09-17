@@ -121,7 +121,7 @@ function addAssistantBubble(text) {
   el.className = "msg assistant";
   el.innerHTML = `<div class="bubble"><div class="thinkwrap" hidden>
       <div class="thinkline">
-        <span class="t-label">pensando…</span>
+        <span class="t-label">Thinking…</span>
         <button class="t-expand" title="Desplegar/ocultar el pensamiento" aria-label="Desplegar pensamiento">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
         </button>
@@ -410,17 +410,22 @@ async function sendMessage() {
   let textSinceRow = false;
   let segText = "";
   let thinkSeg = "";
-  let thinkActive = false;
+  let phase = "wait"; // wait -> think -> answer
   const startThink = () => {
-    if (thinkActive) return;
-    thinkActive = true;
+    if (phase !== "wait") return;
+    phase = "think";
+    bubble.querySelector(".tcontent").innerHTML = ""; // el "esperando al modelo" cede el sitio al thought
     bubble.querySelector(".thinkwrap").hidden = false;
-    bubble.querySelector(".t-label").classList.add("bz-pulse");
+    const tl = bubble.querySelector(".t-label");
+    tl.classList.add("bz-pulse");
+    tl.textContent = "Thinking…";
   };
   const stopThink = () => {
-    if (!thinkActive) return;
-    thinkActive = false;
-    bubble.querySelector(".t-label").classList.remove("bz-pulse");
+    if (phase !== "think") return;
+    phase = "answer";
+    const tl = bubble.querySelector(".t-label");
+    tl.classList.remove("bz-pulse");
+    tl.textContent = lastSentence(thinkSeg) || ""; // desaparece la etiqueta "Thinking"
   };
   busy = true;
   updateButtons();
@@ -429,7 +434,8 @@ async function sendMessage() {
   const paint = () => {
     raf = null;
     bubble.querySelector(".tcontent").innerHTML =
-      inlineMd(segText) || '<span class="typing bz-pulse">esperando al modelo…</span>';
+      inlineMd(segText) ||
+      (phase === "wait" ? '<span class="typing bz-pulse">esperando al modelo…</span>' : "");
     scrollBottom();
   };
   const finalizeTurn = () => {
@@ -472,7 +478,8 @@ async function sendMessage() {
         thinkSeg += t;
         startThink();
         bubble.querySelector(".thinkbox").textContent = thinkSeg;
-        bubble.querySelector(".t-label").textContent = lastSentence(thinkSeg) || "pensando…";
+        const s = lastSentence(thinkSeg);
+        bubble.querySelector(".t-label").textContent = s ? `Thinking: ${s}` : "Thinking…";
         scrollBottom();
       },
       tool_call: (ev) => {
@@ -484,7 +491,7 @@ async function sendMessage() {
           segText = "";
           thinkSeg = "";
           textSinceRow = false;
-          thinkActive = false;
+          phase = "wait";
           chipsRow = document.createElement("div");
           chipsRow.className = "toolchips";
           chatEl.append(chipsRow);
@@ -535,13 +542,13 @@ async function sendMessage() {
       retry: (ev) => {
         segText = "";
         thinkSeg = "";
-        thinkActive = false;
+        phase = "wait";
         const tw = bubble.querySelector(".thinkwrap");
         tw.hidden = true;
         tw.classList.remove("open");
         const tl = bubble.querySelector(".t-label");
         tl.classList.remove("bz-pulse");
-        tl.textContent = "pensando…";
+        tl.textContent = "Thinking…";
         bubble.querySelector(".thinkbox").textContent = "";
         const max = Math.max(1, (ev.maxAttempts || 4) - 1);
         bubble.querySelector(".tcontent").innerHTML = `<span class="typing bz-pulse">… gateway inestable, reintento ${ev.attempt}/${max}</span>`;
