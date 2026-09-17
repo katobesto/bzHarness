@@ -56,7 +56,7 @@ Alternativa: variable de entorno `HARNESS_API_KEY` si no quieres guardar el toke
 | `temperature` | Temperatura de muestreo |
 | `defaultWorkdir` | Carpeta por defecto al crear sesiones |
 | `workspacePresets` | Atajos mostrados en el diálogo de nueva sesión |
-| `showThinking` | `true` → la UI muestra el stream de razonamiento (`reasoning_content`) en gris fino |
+| `showThinking` | `true` → la UI muestra el razonamiento (`reasoning_content`): línea colapsada con la última frase (pulso de color) que se puede desplegar para ver el pensamiento completo |
 | `shellApproval` | `true` → la UI pide aprobación antes de cada comando shell |
 | `shellTimeoutMs` | Timeout por comando (el proceso se mata y se marca TIMEOUT) |
 | `port` | Puerto del servidor (cambios requieren reiniciar) |

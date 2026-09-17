@@ -119,10 +119,37 @@ function addUserBubble(text, attached = []) {
 function addAssistantBubble(text) {
   const el = document.createElement("div");
   el.className = "msg assistant";
-  el.innerHTML = `<div class="bubble"><div class="thinkbox" hidden></div><div class="tcontent"></div></div>`;
+  el.innerHTML = `<div class="bubble"><div class="thinkwrap" hidden>
+      <div class="thinkline">
+        <span class="t-label">pensando…</span>
+        <button class="t-expand" title="Desplegar/ocultar el pensamiento" aria-label="Desplegar pensamiento">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+      </div>
+      <pre class="thinkbox"></pre>
+    </div><div class="tcontent"></div></div>`;
+  const tw = el.querySelector(".thinkwrap");
+  tw.querySelector(".thinkline").onclick = () => tw.classList.toggle("open");
   el.querySelector(".tcontent").innerHTML = text ? fullMD(text) : "";
   chatEl.append(el);
   return el;
+}
+
+function lastSentence(text) {
+  const t = text.trim();
+  if (!t) return "";
+  const re = /[^.!?…]*[.!?…]/g;
+  let m;
+  let end = 0;
+  let last = null;
+  while ((m = re.exec(t))) {
+    end = re.lastIndex;
+    last = m[0];
+  }
+  const tail = t.slice(end).trim();
+  if (tail) return tail;
+  if (!last) return t;
+  return t.slice(Math.max(0, end - last.length)).trim();
 }
 
 function safeParse(s) {
@@ -253,7 +280,7 @@ function detailBody(e) {
   } else if (e.args) {
     html += `<div class="tsec">Argumentos</div><pre class="toolpre">${esc(JSON.stringify(e.args, null, 2))}</pre>`;
   }
-  if (e.ok === null) html += `<div class="tsec">Salida</div><pre class="toolpre"><span class="typing">… en curso</span></pre>`;
+  if (e.ok === null) html += `<div class="tsec">Salida</div><pre class="toolpre"><span class="typing bz-pulse">… en curso</span></pre>`;
   else html += `<div class="tsec">Salida</div><pre class="toolpre ${e.ok ? "ok" : "fail"}">${esc(e.output ?? "")}</pre>`;
   return html || `<pre class="toolpre"></pre>`;
 }
@@ -378,26 +405,39 @@ async function sendMessage() {
   if (w) w.remove();
   addUserBubble(msgText, sentNames);
   let bubble = addAssistantBubble("");
-  bubble.querySelector(".tcontent").innerHTML = '<span class="typing">…</span>';
+  bubble.querySelector(".tcontent").innerHTML = '<span class="typing bz-pulse">esperando al modelo…</span>';
   let chipsRow = null;
   let textSinceRow = false;
   let segText = "";
   let thinkSeg = "";
+  let thinkActive = false;
+  const startThink = () => {
+    if (thinkActive) return;
+    thinkActive = true;
+    bubble.querySelector(".thinkwrap").hidden = false;
+    bubble.querySelector(".t-label").classList.add("bz-pulse");
+  };
+  const stopThink = () => {
+    if (!thinkActive) return;
+    thinkActive = false;
+    bubble.querySelector(".t-label").classList.remove("bz-pulse");
+  };
   busy = true;
   updateButtons();
   let raf = null;
   let finalized = false;
   const paint = () => {
     raf = null;
-    bubble.querySelector(".tcontent").innerHTML = inlineMd(segText) || '<span class="typing">…</span>';
+    bubble.querySelector(".tcontent").innerHTML =
+      inlineMd(segText) || '<span class="typing bz-pulse">esperando al modelo…</span>';
     scrollBottom();
   };
   const finalizeTurn = () => {
     if (finalized) return;
     finalized = true;
+    stopThink();
     const tc = bubble.querySelector(".tcontent");
-    const box = bubble.querySelector(".thinkbox");
-    if (!segText && box.hidden) bubble.remove();
+    if (!segText && !thinkSeg) bubble.remove();
     else tc.innerHTML = segText ? fullMD(segText) : "";
     scrollBottom();
   };
@@ -420,6 +460,7 @@ async function sendMessage() {
               ? ev.content.map((p) => (typeof p === "string" ? p : p?.text ?? "")).join("")
               : ev.content?.text ?? "";
         if (t) {
+          stopThink();
           segText += t;
           textSinceRow = true;
           if (!raf) raf = requestAnimationFrame(paint);
@@ -429,25 +470,27 @@ async function sendMessage() {
         const t = typeof ev.content === "string" ? ev.content : (ev.content?.text ?? "");
         if (!t) return;
         thinkSeg += t;
-        const box = bubble.querySelector(".thinkbox");
-        if (box.hidden) box.hidden = false;
-        box.textContent = thinkSeg;
+        startThink();
+        bubble.querySelector(".thinkbox").textContent = thinkSeg;
+        bubble.querySelector(".t-label").textContent = lastSentence(thinkSeg) || "pensando…";
         scrollBottom();
       },
       tool_call: (ev) => {
         if (chipsRow === null || textSinceRow) {
+          stopThink();
           const tc = bubble.querySelector(".tcontent");
-          const box = bubble.querySelector(".thinkbox");
-          if (!segText && box.hidden) bubble.remove();
+          if (!segText && !thinkSeg) bubble.remove();
           else if (segText) tc.innerHTML = fullMD(segText);
           segText = "";
           thinkSeg = "";
           textSinceRow = false;
+          thinkActive = false;
           chipsRow = document.createElement("div");
           chipsRow.className = "toolchips";
           chatEl.append(chipsRow);
           bubble = addAssistantBubble("");
-          bubble.querySelector(".tcontent").innerHTML = "";
+          bubble.querySelector(".tcontent").innerHTML =
+            '<span class="typing bz-pulse">esperando al modelo…</span>';
         }
         addToolChip(ev, chipsRow);
       },
@@ -492,11 +535,16 @@ async function sendMessage() {
       retry: (ev) => {
         segText = "";
         thinkSeg = "";
-        const box = bubble.querySelector(".thinkbox");
-        box.hidden = true;
-        box.textContent = "";
+        thinkActive = false;
+        const tw = bubble.querySelector(".thinkwrap");
+        tw.hidden = true;
+        tw.classList.remove("open");
+        const tl = bubble.querySelector(".t-label");
+        tl.classList.remove("bz-pulse");
+        tl.textContent = "pensando…";
+        bubble.querySelector(".thinkbox").textContent = "";
         const max = Math.max(1, (ev.maxAttempts || 4) - 1);
-        bubble.querySelector(".tcontent").innerHTML = `<span class="typing">… gateway inestable, reintento ${ev.attempt}/${max}</span>`;
+        bubble.querySelector(".tcontent").innerHTML = `<span class="typing bz-pulse">… gateway inestable, reintento ${ev.attempt}/${max}</span>`;
         scrollBottom();
       },
       error: (ev) => addErrorBubble("⚠ " + ev.message, ev.detail),
