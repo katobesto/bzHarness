@@ -124,6 +124,14 @@ export const LLM_IDLE_TIMEOUT_MS = 90000;
 
 async function chatStreamOnce(cfg, body, { onDelta, onThink, signal, onCall } = {}) {
   sanitizeLLMBody(body);
+  // "reasoning" es interno del harness (se persiste en el transcript); no es un
+  // campo de la API: se elimina en COPIAS antes de enviar al proveedor.
+  body.messages = (body.messages || []).map((m) => {
+    if (!("reasoning" in m)) return m;
+    const c = { ...m };
+    delete c.reasoning;
+    return c;
+  });
   const t0 = Date.now();
   const url = joinBase(cfg.baseUrl, "/chat/completions");
   const idleMs = Number(cfg.llmIdleTimeoutMs) > 0 ? Number(cfg.llmIdleTimeoutMs) : LLM_IDLE_TIMEOUT_MS;
@@ -216,6 +224,7 @@ async function chatStreamOnce(cfg, body, { onDelta, onThink, signal, onCall } = 
   const reader = res.body.getReader();
   let buf = "";
   let content = "";
+  let reasoning = "";
   const tcs = new Map();
 
   const processLine = (line) => {
@@ -244,7 +253,10 @@ async function chatStreamOnce(cfg, body, { onDelta, onThink, signal, onCall } = 
         : typeof delta.reasoning === "string"
           ? delta.reasoning
           : "";
-    if (think) onThink?.(think);
+    if (think) {
+      reasoning += think;
+      onThink?.(think);
+    }
     for (const tc of delta.tool_calls || []) {
       const slot = tcs.get(tc.index) || { id: "", name: "", arguments: "" };
       if (tc.id) slot.id = tc.id;
@@ -299,7 +311,7 @@ async function chatStreamOnce(cfg, body, { onDelta, onThink, signal, onCall } = 
       function: { name: t.name, arguments: t.arguments }
     }));
 
-  return { role: "assistant", content: content || null, ...(tool_calls.length ? { tool_calls } : {}) };
+  return { role: "assistant", content: content || null, ...(reasoning ? { reasoning } : {}), ...(tool_calls.length ? { tool_calls } : {}) };
 }
 
 const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504]);

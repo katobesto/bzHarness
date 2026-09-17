@@ -322,6 +322,12 @@ function renderMessage(m) {
   if (m.role === "user") addUserBubble(m.content);
   else if (m.role === "assistant") {
     const b = addAssistantBubble(m.content || "");
+    if (m.reasoning && config?.showThinking !== false) {
+      const tw = b.querySelector(".thinkwrap");
+      tw.hidden = false;
+      tw.querySelector(".thinkbox").textContent = m.reasoning;
+      tw.querySelector(".t-label").textContent = lastSentence(m.reasoning) || "Pensamiento";
+    }
     if (m.tool_calls) {
       const row = document.createElement("div");
       row.className = "toolchips";
@@ -329,7 +335,7 @@ function renderMessage(m) {
       for (const tc of m.tool_calls) {
         addToolChip({ id: tc.id, name: tc.function.name, args: safeParse(tc.function.arguments) }, row);
       }
-      b.remove();
+      if (!(m.content || m.reasoning)) b.remove();
     }
   } else if (m.role === "tool") {
     updateToolChip({ id: m.tool_call_id, name: m.name, ok: true, output: m.content });
