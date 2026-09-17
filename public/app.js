@@ -446,16 +446,27 @@ async function sendMessage() {
         row.className = "img-row";
         for (const img of ev.images || []) {
           const href = `/api/sessions/${currentId}/file?path=${encodeURIComponent(img.path)}`;
-          const a = document.createElement("a");
-          a.href = href;
-          a.target = "_blank";
-          a.rel = "noopener";
-          a.title = `${img.path} (${img.mime}, ${img.bytes} bytes) — clic para ver a tamaño completo`;
+          const title = `${img.path} (${img.mime}, ${img.bytes} bytes)`;
+          const fig = document.createElement("div");
+          fig.className = "imgfig";
           const im = document.createElement("img");
           im.src = href;
           im.alt = img.path;
-          a.append(im);
-          row.append(a);
+          im.title = title + " — clic para ampliar";
+          im.loading = "lazy";
+          im.onclick = () => openLightbox(href, title);
+          const x = document.createElement("button");
+          x.className = "img-x";
+          x.title = "Descartar imagen";
+          x.setAttribute("aria-label", "Descartar imagen " + img.path);
+          x.textContent = "×";
+          x.onclick = (e) => {
+            e.stopPropagation();
+            fig.remove();
+            if (!row.childElementCount) row.remove();
+          };
+          fig.append(im, x);
+          row.append(fig);
         }
         if (row.childNodes.length) {
           chatEl.append(row);
@@ -699,7 +710,20 @@ function applyZoom() {
 function bumpZoom(delta) {
   chatZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round((chatZoom + delta) * 10) / 10));
   localStorage.setItem("bz.chatZoom", String(chatZoom));
-  applyZoom();
+/* ---------- visor de imágenes ---------- */
+
+function openLightbox(src, caption) {
+  $("#lbImg").src = src;
+  $("#lbImg").alt = caption || "";
+  $("#lbCaption").textContent = caption || "";
+  $("#lightbox").hidden = false;
+}
+function closeLightbox() {
+  $("#lightbox").hidden = true;
+  $("#lbImg").src = "";
+}
+
+applyZoom();
 }
 
 /* ---------- barra lateral ---------- */
@@ -785,6 +809,13 @@ $("#btnOpenDir").onclick = async () => {
 };
 document.querySelectorAll("[data-close]").forEach((b) => {
   b.onclick = () => b.closest(".modal").setAttribute("hidden", "");
+});
+$("#lbClose").onclick = closeLightbox;
+$("#lightbox").addEventListener("click", (e) => {
+  if (e.target === e.currentTarget) closeLightbox();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !$("#lightbox").hidden) closeLightbox();
 });
 
 applyZoom();

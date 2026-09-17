@@ -757,16 +757,92 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; background:
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 14px; }
 .chips:empty { display: none; margin: 0; }
 .img-row { display: flex; flex-wrap: wrap; gap: 10px; margin: 4px 0 14px; }
-.img-row a {
-  line-height: 0;
+.img-row .imgfig { position: relative; line-height: 0; }
+.img-row img {
+  display: block;
+  max-width: 220px;
+  max-height: 140px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  overflow: hidden;
   background: var(--surface-2);
+  cursor: zoom-in;
   transition: border-color 0.12s;
 }
-.img-row a:hover { border-color: var(--accent); }
-.img-row img { display: block; max-width: 220px; max-height: 140px; }
+.img-row .imgfig:hover img { border-color: var(--accent); }
+.img-x {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: rgba(8, 11, 18, 0.85);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s, border-color 0.12s;
+}
+.img-row .imgfig:hover .img-x,
+.img-x:focus-visible { opacity: 1; }
+.img-x:hover { color: var(--text); border-color: var(--accent); }
+
+/* visor de imágenes */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: rgba(4, 6, 10, 0.82);
+  backdrop-filter: blur(5px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+}
+.lightbox[hidden] { display: none; }
+.lightbox img {
+  max-width: 100%;
+  max-height: 100%;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #000;
+}
+.lb-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.lb-close svg { width: 16px; height: 16px; }
+.lb-close:hover { background: var(--surface-3); color: var(--text); border-color: var(--accent); }
+.lb-caption {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 80vw;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+}
 .chip {
   background: var(--surface-2);
   border: 1px solid var(--border);
