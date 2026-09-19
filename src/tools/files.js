@@ -67,7 +67,7 @@ export const fileRead = {
 export const imageRead = {
   name: "image_read",
   description:
-    "Lee una imagen del sandbox (png, jpg, jpeg, gif, webp, bmp; max 10 MB) y la ADJUNTA a la siguiente peticion al modelo en formato vision (base64). No devuelve el contenido: el modelo la ve en la siguiente llamada. El modelo configurado debe ser un modelo vision. Si la ejecucion termina antes de la siguiente llamada, la imagen no se envia.",
+    "Lee una imagen del sandbox (png, jpg, jpeg, gif, webp, bmp; max 10 MB) y la ADJUNTA a la siguiente peticion al modelo en formato vision (base64). No devuelve el contenido: el modelo la ve en la siguiente llamada. Antes de enviarse, la imagen se escala automaticamente si supera 1568 px de lado (para no exceder el presupuesto de vision del gateway). El modelo configurado debe ser un modelo vision. Si la ejecucion termina antes de la siguiente llamada, la imagen no se envia.",
   parameters: {
     type: "object",
     properties: {

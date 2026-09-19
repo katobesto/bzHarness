@@ -247,6 +247,15 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; background:
   white-space: nowrap;
 }
 .s-model { color: var(--muted); font-size: 11px; margin-top: 2px; }
+.s-metrics {
+  color: var(--faint);
+  font-size: 10.5px;
+  font-family: var(--mono);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .s-del {
   position: absolute;
   top: 7px;
@@ -460,6 +469,32 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; background:
 .toolchip.fail { color: var(--err); border-color: rgba(255, 109, 109, 0.4); background: var(--err-soft); }
 .toolchip.fail:hover { color: var(--err); }
 
+/* metricas de tokens por turno (tokens/s, enviados, recibidos, cache KV) */
+.metrics {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: -10px auto 20px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--faint);
+}
+.metrics .m-ico { display: inline-flex; opacity: 0.7; }
+.metrics .m-ico svg { width: 13px; height: 13px; }
+.metrics .m-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px;
+  border: 1px solid var(--border-soft);
+  background: var(--surface);
+  border-radius: 999px;
+  line-height: 1.7;
+  transition: color 0.12s, border-color 0.12s;
+}
+.metrics:hover .m-chip { color: var(--muted); border-color: var(--border); }
+
 /* detalle de herramienta inline */
 .tooldetail {
   margin: 0 auto 20px;
@@ -582,59 +617,71 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; background:
 }
 .bz-pulse { animation: bzPulse 1.4s ease-in-out infinite; }
 
-/* markdown renderizado */
-.tcontent > :first-child { margin-top: 0; }
-.tcontent > :last-child { margin-bottom: 0; }
-.tcontent p { margin: 0 0 10px; }
-.tcontent h1, .tcontent h2, .tcontent h3, .tcontent h4 { margin: 14px 0 6px; font-size: 1.04em; font-weight: 650; }
-.tcontent ul, .tcontent ol { margin: 6px 0; padding-left: 22px; }
-.tcontent a { color: var(--accent); text-decoration: none; }
-.tcontent a:hover { text-decoration: underline; }
-.tcontent blockquote {
+/* ============ markdown renderizado ============
+   La estructura (tablas, código, listas, citas, títulos) la aporta github-markdown-css
+   (vendor/github-markdown.css). Aquí solo se fuerza la paleta oscura mapeada a los
+   tokens del app y la tipografía/zoom, para integrar el contenido con el resto de la UI. */
+#chat .markdown-body {
+  color-scheme: dark;
+  /* paleta oscura de la lib -> tokens del app */
+  --fgColor-default: var(--text);
+  --fgColor-muted: var(--muted);
+  --fgColor-accent: var(--accent);
+  --fgColor-success: var(--ok);
+  --fgColor-danger: var(--err);
+  --fgColor-attention: var(--warn);
+  --fgColor-done: var(--accent);
+  --bgColor-default: var(--surface);
+  --bgColor-muted: var(--surface-2);
+  --bgColor-neutral-muted: var(--surface-3);
+  --bgColor-attention-muted: rgba(240, 179, 94, 0.15);
+  --borderColor-default: var(--border);
+  --borderColor-muted: var(--border-soft);
+  --borderColor-accent-emphasis: var(--accent-strong);
+  --borderColor-danger-emphasis: var(--err);
+  --borderColor-success-emphasis: var(--ok);
+  --borderColor-attention-emphasis: var(--warn);
+  --borderColor-done-emphasis: var(--accent-strong);
+  --fontStack-monospace: var(--mono);
+  /* tipografía y zoom del app (la lib fija 16px; se hereda del .chat) */
+  font-family: var(--font);
+  font-size: inherit;
+  line-height: 1.55;
+  color: var(--text);
+  overflow-wrap: break-word;
+}
+#chat .markdown-body > :first-child { margin-top: 0; }
+#chat .markdown-body > :last-child { margin-bottom: 0; }
+#chat .markdown-body h1, #chat .markdown-body h2, #chat .markdown-body h3,
+#chat .markdown-body h4, #chat .markdown-body h5, #chat .markdown-body h6 {
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+#chat .markdown-body a { color: var(--accent); text-decoration: none; }
+#chat .markdown-body a:hover { text-decoration: underline; }
+#chat .markdown-body blockquote {
   margin: 10px 0;
-  padding: 6px 14px;
-  border-left: 3px solid var(--border-strong);
+  padding: 8px 14px;
+  background: var(--surface);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   color: var(--muted);
 }
-.tcontent table {
-  display: block;
-  max-width: 100%;
-  overflow-x: auto;
-  margin: 10px 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  font-size: 12.5px;
-}
-.tcontent th {
-  background: var(--surface-2);
-  font-weight: 600;
-  text-align: left;
-  padding: 7px 11px;
-  border-bottom: 1px solid var(--border);
-  white-space: nowrap;
-}
-.tcontent td {
-  padding: 6px 11px;
-  border-bottom: 1px solid var(--border-soft);
-}
-.tcontent tbody tr:last-child td { border-bottom: none; }
-.tcontent tbody tr:hover { background: rgba(255, 255, 255, 0.02); }
-.tcontent pre {
+#chat .markdown-body table { font-size: 0.92em; }
+#chat .markdown-body th { background: var(--surface-2); }
+#chat .markdown-body pre {
   background: #0d1016;
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-sm);
-  padding: 11px 13px;
+  padding: 12px 14px;
   margin: 10px 0;
-  overflow-x: auto;
 }
-.tcontent pre code { font-family: var(--mono); font-size: 12.5px; background: none; padding: 0; }
-.tcontent code:not(pre code) {
+#chat .markdown-body pre code { background: none; padding: 0; }
+#chat .markdown-body code:not(pre code) {
   background: var(--surface-3);
   border: 1px solid var(--border-soft);
   border-radius: 5px;
   padding: 1px 5px;
-  font-family: var(--mono);
-  font-size: 12px;
   color: #c3cbdd;
 }
 
@@ -772,6 +819,8 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; background:
   font-weight: 500;
 }
 .field-hint { color: var(--faint); font-weight: 400; }
+.model-row { display: flex; align-items: center; gap: 8px; margin-top: 5px; }
+.model-row input, .model-row select { flex: 1; width: auto; margin-top: 0; }
 .modal-box input, .modal-box select, .modal-box textarea {
   display: block;
   width: 100%;
@@ -888,9 +937,9 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; background:
 .toggle input:focus-visible { box-shadow: 0 0 0 3px var(--accent-soft); }
 .toggle-txt { line-height: 1.35; }
 
-.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 14px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px auto 14px; }
 .chips:empty { display: none; margin: 0; }
-.img-row { display: flex; flex-wrap: wrap; gap: 10px; margin: 4px 0 14px; }
+.img-row { display: flex; flex-wrap: wrap; gap: 10px; margin: 4px auto 14px; }
 .img-row .imgfig { position: relative; line-height: 0; }
 .img-row img {
   display: block;
@@ -998,7 +1047,7 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; background:
   border: 1px solid rgba(108, 140, 255, 0.22);
   border-radius: var(--radius-sm);
   padding: 10px 12px;
-  margin: 14px 0 4px;
+  margin: 14px auto 4px;
   color: var(--muted);
   font-size: 12.5px;
   line-height: 1.5;

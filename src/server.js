@@ -50,7 +50,8 @@ function updateIndexEntry(session) {
     workdir: session.workdir,
     model: session.model,
     createdAt: session.createdAt,
-    updatedAt: new Date().toISOString()
+    updatedAt: new Date().toISOString(),
+    metrics: session.metrics || null
   };
   if (i >= 0) list[i] = entry;
   else list.unshift(entry);
@@ -72,7 +73,40 @@ function getOrLoad(id) {
   }
 }
 
+// Agrega las metricas de tokens de una ejecucion a partir de las llamadas al
+// LLM que reportaron usage (stream con include_usage). Devuelve null si el
+// gateway no reporto usage en ninguna llamada.
+function metricsFor(run) {
+  let prompt = 0, completion = 0, cached = 0, llmMs = 0, n = 0;
+  for (const c of run.calls) {
+    if (!c.ok || !c.usage) continue;
+    prompt += c.usage.prompt_tokens || 0;
+    completion += c.usage.completion_tokens || 0;
+    cached += (c.usage.prompt_tokens_details && c.usage.prompt_tokens_details.cached_tokens) || 0;
+    if (c.durationMs > 0) {
+      llmMs += c.durationMs;
+      n++;
+    }
+  }
+  if (!n) return null;
+  const tps = llmMs > 0 ? completion / (llmMs / 1000) : null;
+  return {
+    calls: n,
+    promptTokens: prompt,
+    completionTokens: completion,
+    cachedTokens: cached,
+    llmMs,
+    tokensPerSec: tps != null ? Math.round(tps) : null,
+    cachePct: prompt > 0 ? Math.min(100, Math.round((cached / prompt) * 100)) : null
+  };
+}
+
+// Kill switch idempotente: aborta el controller, mata procesos hijos, resuelve
+// aprobaciones pendientes como "rechazado" y NOTIFICA AL CLIENTE de forma inmediata
+// (done+end) de forma que la UI deje el estado "busy" ahora, sin esperar a que el
+// loop del agente termine la fase en la que estaba (prefill, escala de vision, etc.).
 function abortRun(run) {
+  if (run.ac.signal.aborted) return;
   run.ac.abort();
   for (const resolve of run.approvals.values()) resolve(false);
   run.approvals.clear();
@@ -82,6 +116,11 @@ function abortRun(run) {
     } catch {
       /* ignore */
     }
+  }
+  if (run._emit && !run._doneEmitted) {
+    run._doneEmitted = true;
+    run._emit({ type: "done", aborted: true, model: run.model || null, metrics: metricsFor(run) });
+    run._emit({ type: "end" });
   }
 }
 
@@ -340,6 +379,14 @@ app.post("/api/stop/:sessionId", (req, res) => {
   res.json({ ok: true });
 });
 
+// Detiene TODAS las ejecuciones activas (todas las sesiones): aborta controllers,
+// responde aprobaciones pendientes como "rechazado" y mata los procesos hijos (shell).
+app.post("/api/stop-all", (req, res) => {
+  const runs = [...activeRuns.values()];
+  for (const run of runs) abortRun(run);
+  res.json({ ok: true, stopped: runs.length });
+});
+
 app.post("/api/open-dir", (req, res) => {
   const session = getOrLoad(req.body?.sessionId);
   if (!session) return res.status(404).json({ error: "sesión no encontrada" });
@@ -363,7 +410,7 @@ app.post("/api/chat", async (req, res) => {
   if (activeRuns.has(session.id)) return res.status(409).json({ error: "la sesión ya tiene una ejecución activa" });
 
   const ac = new AbortController();
-  const run = { ac, signal: ac.signal, children: new Set(), approvals: new Map(), calls: [], pendingImages: [] };
+  const run = { ac, signal: ac.signal, model: null, _emit: null, _doneEmitted: false, children: new Set(), approvals: new Map(), calls: [], pendingImages: [] };
   const onCall = (info) => {
     info.n = run.calls.length + 1;
     run.calls.push(info);
@@ -380,7 +427,13 @@ app.post("/api/chat", async (req, res) => {
   if (res.flushHeaders) res.flushHeaders();
   res.on("error", () => {});
   const emit = (ev) => {
-    if (!res.writableEnded && res.writable) res.write("data: " + JSON.stringify(ev) + "\n\n");
+    if (!res.writableEnded && res.writable) {
+      try {
+        res.write("data: " + JSON.stringify(ev) + "\n\n");
+      } catch {
+        /* socket ya cerrado: el cliente no va a leer esto */
+      }
+    }
   };
   const onRetry = (attempt, waitMs) => {
     const info = { ok: false, retry: true, attempt, waitMs, note: "reintento programado" };
@@ -390,18 +443,10 @@ app.post("/api/chat", async (req, res) => {
   };
   const onThink = cfg.showThinking ? (t) => emit({ type: "think", content: t }) : undefined;
 
-  let model = session.model || null;
-  if (!model || model === "auto") {
-    if (cfg.model && cfg.model !== "auto") model = cfg.model;
-    else {
-      try {
-        const ms = await listModels(cfg);
-        model = ms.find((m) => !m.includes("/")) || ms[0] || null;
-      } catch {
-        model = null;
-      }
-    }
-  }
+  // El modelo es el asignado a la sesion; si no tiene, el de la config. No se
+  // vuelve a consultar /v1/models en mitad del razonamiento: se llama directo
+  // con ese modelo y, si el gateway responde con error, se captura y se reporta.
+  let model = session.model && session.model !== "auto" ? session.model : cfg.model && cfg.model !== "auto" ? cfg.model : null;
   if (!cfg.apiKey) {
     const m = "Falta la API key. Añádela en Configuración.";
     session.messages.push({ role: "error", content: "⚠ " + m });
@@ -415,7 +460,7 @@ app.post("/api/chat", async (req, res) => {
   }
   if (!model) {
     const m =
-      "No se pudo determinar el modelo (detección /v1/models falló y model=auto). Fija un modelo concreto en Configuración o en la sesión.";
+      "No hay modelo asignado: la sesión y la configuración no fijan un modelo concreto. Elige un modelo en Configuración o en la sesión.";
     session.messages.push({ role: "error", content: "⚠ " + m });
     emit({ type: "error", message: m });
     emit({ type: "done", aborted: false, model: null });
@@ -425,6 +470,8 @@ app.post("/api/chat", async (req, res) => {
     res.end();
     return;
   }
+  run.model = model;
+  run._emit = emit;
 
   const approve = async (command) => {
     if (!cfg.shellApproval) return true;
@@ -462,8 +509,13 @@ app.post("/api/chat", async (req, res) => {
     }
   }
   if (ac.signal.aborted) aborted = true;
-  emit({ type: "done", aborted, model });
-  emit({ type: "end" });
+  // Si abortRun ya notifico al cliente (boton Parar / cierre del socket), no
+  // duplicamos done/end; la emision normal sigue siendo la del loop del agente.
+  if (!run._doneEmitted) {
+    emit({ type: "done", aborted, model, metrics: metricsFor(run) });
+    emit({ type: "end" });
+    run._doneEmitted = true;
+  }
 
   for (const resolve of run.approvals.values()) resolve(false);
   run.approvals.clear();
@@ -475,6 +527,22 @@ app.post("/api/chat", async (req, res) => {
     }
   }
   activeRuns.delete(session.id);
+  // Acumula metricas de tokens de la sesion (persisten en el index) y deja las
+  // del turno en el ultimo mensaje asistente (se pintan al recargar la UI).
+  {
+    const mm = metricsFor(run);
+    if (mm) {
+      const base = session.metrics || { promptTokens: 0, completionTokens: 0, cachedTokens: 0, calls: 0 };
+      session.metrics = {
+        promptTokens: (base.promptTokens || 0) + mm.promptTokens,
+        completionTokens: (base.completionTokens || 0) + mm.completionTokens,
+        cachedTokens: (base.cachedTokens || 0) + mm.cachedTokens,
+        calls: (base.calls || 0) + mm.calls
+      };
+      const last = [...session.messages].reverse().find((x) => x.role === "assistant");
+      if (last) last.metrics = mm;
+    }
+  }
   try {
     persistSession(session);
     updateIndexEntry(session);

@@ -72,6 +72,22 @@ function cleanString(s) {
   return t;
 }
 
+// El gateway (y la API OpenAI) exigen que tool_calls[].function.arguments sea un
+// JSON valido; si no lo es, el proveedor lanza una excepcion no capturada y
+// devuelve un 500 HTML (no es un fallo de red/proxy). Un argumento puede quedar
+// truncado si el usuario pulsa "Parar" mientras el modelo lo esta escribiendo.
+// Se repara a "{}" (una llamada cortada no tiene argumentos utiles) para que el
+// historial nunca envenene las peticiones siguientes.
+function argsJsonOrEmpty(s) {
+  if (typeof s !== "string" || !s.trim()) return "{}";
+  try {
+    JSON.parse(s);
+    return s;
+  } catch {
+    return "{}";
+  }
+}
+
 export function sanitizeLLMBody(body) {
   for (const m of body.messages || []) {
     if (typeof m.content === "string") m.content = cleanString(m.content);
@@ -79,7 +95,7 @@ export function sanitizeLLMBody(body) {
       for (const tc of m.tool_calls) {
         if (!tc.function) continue;
         if (typeof tc.function.name === "string") tc.function.name = cleanString(tc.function.name).slice(0, 120);
-        if (typeof tc.function.arguments === "string") tc.function.arguments = cleanString(tc.function.arguments);
+        if (typeof tc.function.arguments === "string") tc.function.arguments = argsJsonOrEmpty(cleanString(tc.function.arguments));
       }
     }
   }
@@ -104,6 +120,16 @@ export class LLMError extends Error {
   }
 }
 
+// Sonda por proveedor de soporte para stream_options={include_usage:true} (usage
+// dentro del stream, fuente de las metricas de tokens). Se manda en la primera
+// llamada; si el gateway la rechaza con 400 mencionando stream_options, se
+// desactiva para esa base URL y la llamada se reintenta sin el campo.
+const streamOpts = new Map(); // baseUrl -> bool
+function streamOptsOn(cfg) {
+  if (!streamOpts.has(cfg.baseUrl)) streamOpts.set(cfg.baseUrl, true);
+  return streamOpts.get(cfg.baseUrl);
+}
+
 function reqSummary(body) {
   const msgs = Array.isArray(body.messages) ? body.messages : [];
   return {
@@ -124,12 +150,15 @@ export const LLM_IDLE_TIMEOUT_MS = 90000;
 
 async function chatStreamOnce(cfg, body, { onDelta, onThink, signal, onCall } = {}) {
   sanitizeLLMBody(body);
-  // "reasoning" es interno del harness (se persiste en el transcript); no es un
-  // campo de la API: se elimina en COPIAS antes de enviar al proveedor.
+  // "reasoning" es interno del harness (se persiste en el transcript); "metrics"/
+  // "usage" son metricas de tokens agregadas por el servidor. Ninguno es un campo
+  // de la API: se eliminan en COPIAS antes de enviar al proveedor.
   body.messages = (body.messages || []).map((m) => {
-    if (!("reasoning" in m)) return m;
+    if (!("reasoning" in m) && !("metrics" in m) && !("usage" in m)) return m;
     const c = { ...m };
     delete c.reasoning;
+    delete c.metrics;
+    delete c.usage;
     return c;
   });
   const t0 = Date.now();
@@ -152,9 +181,11 @@ async function chatStreamOnce(cfg, body, { onDelta, onThink, signal, onCall } = 
     ctl.abort();
   };
   const disarm = () => {
+    // Solo desarma el watchdog temporal; el listener de abort del usuario se
+    // mantiene activo durante toda la lectura (se retira en el finally),
+    // si no, "parar" en medio del stream no llegaria al fetch del LLM.
     if (idleTimer) clearTimeout(idleTimer);
     idleTimer = null;
-    signal?.removeEventListener("abort", onExternalAbort);
   };
   signal?.addEventListener("abort", onExternalAbort, { once: true });
   const timeoutDetail = () => ({
@@ -173,7 +204,7 @@ async function chatStreamOnce(cfg, body, { onDelta, onThink, signal, onCall } = 
     res = await fetch(url, {
       method: "POST",
       headers: { ...headers(cfg), "content-type": "application/json" },
-      body: JSON.stringify({ ...body, stream: true }),
+      body: JSON.stringify({ ...body, stream: true, ...(streamOptsOn(cfg) ? { stream_options: { include_usage: true } } : {}) }),
       signal: ctl.signal
     });
   } catch (e) {
@@ -215,29 +246,59 @@ async function chatStreamOnce(cfg, body, { onDelta, onThink, signal, onCall } = 
       baseUrl: cfg.baseUrl,
       durationMs
     };
+    // El gateway rechaza stream_options: se desactiva la sonda para esa base URL
+    // y el fallo se convierte en reintentable (status null) para reenviar sin el
+    // campo en el siguiente intento.
+    if (res.status === 400 && streamOptsOn(cfg) && /stream[ _-]?options/i.test(raw)) {
+      streamOpts.set(cfg.baseUrl, false);
+      detail.status = null;
+      detail.note = "gateway rechazo stream_options (usage en stream); desactivado para este proveedor";
+      onCall?.({ ok: false, status: null, error: "el gateway no soporta stream_options", model: body.model, durationMs });
+      throw new LLMError("El gateway no soporta stream_options (usage en stream); se desactivo y se reintentara", detail);
+    }
     onCall?.({ ok: false, status: res.status, error: snippetSync(raw), model: body.model, durationMs });
     throw new LLMError(`LLM HTTP ${res.status}: ${snippetSync(raw)}`, detail);
   }
-  disarm(); // ya hay respuesta del gateway: el watchdog sigue activo pero se gestiona en la lectura
+  // El watchdog armado antes del fetch sigue vivo: cubre el caso de
+  // "cabeceras y luego silencio absoluto"; cada chunk recibido lo re-arma.
 
   const dec = new TextDecoder();
   const reader = res.body.getReader();
   let buf = "";
   let content = "";
   let reasoning = "";
+  let sawDone = false; // [DONE] expliacto del gateway
+  let usage = null; // usage del stream (prompt/completion/cached tokens)
   const tcs = new Map();
 
+  const connCutDetail = () => ({
+    ts: new Date().toISOString(),
+    url,
+    status: null,
+    note: "stream cerrado sin [DONE]",
+    error: "El stream del gateway se cortó sin enviar [DONE] (posible corte de conexión); se tratara como fallo reintentable",
+    request: reqSummary(body),
+    baseUrl: cfg.baseUrl,
+    durationMs: Date.now() - t0
+  });
   const processLine = (line) => {
     const l = line.trim();
     if (!l.startsWith("data:")) return;
     const payload = l.slice(5).trim();
-    if (!payload || payload === "[DONE]") return;
+    if (!payload) return;
+    if (payload === "[DONE]") {
+      sawDone = true;
+      return;
+    }
     let json;
     try {
       json = JSON.parse(payload);
     } catch {
       return;
     }
+    // El chunk final (choices vacias) suele llevar el usage; hay que leerlo
+    // ANTES del corte por "sin delta".
+    if (json.usage && typeof json.usage === "object") usage = json.usage;
     const delta = json.choices?.[0]?.delta;
     if (!delta) return;
     if (delta.content != null) {
@@ -278,10 +339,32 @@ async function chatStreamOnce(cfg, body, { onDelta, onThink, signal, onCall } = 
           onCall?.({ ok: false, status: null, error: d.error, model: body.model, durationMs: d.durationMs });
           throw new LLMError(d.error, d);
         }
-        throw e;
+        // fallo real de red al leer el stream (conexion rota por el gateway):
+        // se lanza como LLMError reintentable, no como error "fatal" del loop.
+        const d = {
+          ts: new Date().toISOString(),
+          url,
+          status: null,
+          note: "fallo de red al leer el stream",
+          error: e.message,
+          request: reqSummary(body),
+          baseUrl: cfg.baseUrl,
+          durationMs: Date.now() - t0
+        };
+        onCall?.({ ok: false, status: null, error: d.error, model: body.model, durationMs: d.durationMs });
+        throw new LLMError("El stream del gateway fallo al leer: " + e.message, d);
       }
       const { done, value } = chunk;
-      if (done) break;
+      if (done) {
+        if (!sawDone && !signal?.aborted && !idleFired) {
+          // el gateway cerró el stream "limpio" sin [DONE]: no es un fin de
+          // respuesta legitimo -> corte de conexion -> fallo reintentable.
+          const d = connCutDetail();
+          onCall?.({ ok: false, status: null, error: d.error, model: body.model, durationMs: d.durationMs });
+          throw new LLMError(d.error, d);
+        }
+        break;
+      }
       if (signal?.aborted) break;
       armIdle(); // reinicia el watchdog por cada chunk recibido
       buf += dec.decode(value, { stream: true });
@@ -301,14 +384,14 @@ async function chatStreamOnce(cfg, body, { onDelta, onThink, signal, onCall } = 
     if (idleTimer) clearTimeout(idleTimer);
     signal?.removeEventListener("abort", onExternalAbort);
   }
-  onCall?.({ ok: true, status: res.status, model: body.model, durationMs: Date.now() - t0 });
+  onCall?.({ ok: true, status: res.status, model: body.model, durationMs: Date.now() - t0, ...(usage ? { usage } : {}) });
 
   const tool_calls = [...tcs.values()]
     .filter((t) => t.name)
     .map((t, i) => ({
       id: t.id || `call_${Date.now().toString(36)}_${i}`,
       type: "function",
-      function: { name: t.name, arguments: t.arguments }
+      function: { name: t.name, arguments: argsJsonOrEmpty(t.arguments) }
     }));
 
   return { role: "assistant", content: content || null, ...(reasoning ? { reasoning } : {}), ...(tool_calls.length ? { tool_calls } : {}) };

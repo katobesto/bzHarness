@@ -6,6 +6,7 @@
   <title>bzHarness by Benzo</title>
   <link rel="stylesheet" href="vendor/inter.css" />
   <link rel="stylesheet" href="vendor/hljs-github-dark.min.css" />
+  <link rel="stylesheet" href="vendor/github-markdown.css" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -23,6 +24,10 @@
     </div>
     <div class="hdr-right">
       <div class="model-badge" id="modelBadge" title="">—</div>
+      <button id="btnStopAll" class="btn danger" title="Detener TODAS las ejecuciones activas (todas las sesiones) y sus procesos" aria-label="Parar todo">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/></svg>
+        Parar todo
+      </button>
       <button id="btnOpenDir" class="btn ghost" title="Abrir la carpeta de trabajo de la sesión en el explorador" disabled>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
         Explorador
@@ -116,9 +121,13 @@
           <label>API key
             <input id="cfApiKey" type="password" class="mono" autocomplete="off" />
           </label>
-          <label>Modelo <span class="field-hint">concreto (se fuerza; si lo dejas vacío se elige el detectado vía /v1/models)</span>
-            <input id="cfModel" list="modelList" class="mono" />
-            <datalist id="modelList"></datalist>
+          <label>Modelo <span class="field-hint">concreto (se fuerza; "auto-detectar" elige el detectado vía /v1/models al guardar)</span>
+            <span class="model-row">
+              <select id="cfModel" class="mono"></select>
+              <button id="btnRefreshModels" type="button" class="icon-btn" title="Recargar modelos del proveedor" aria-label="Recargar modelos">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M3 21v-5h5" /></svg>
+              </button>
+            </span>
           </label>
         </div>
       </div>

@@ -1,6 +1,16 @@
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
+// Emojis: no se pintan en el texto resultante (se quitan al renderizar, el transcript se conserva).
+// Rango Unicode de pictogramas + selectores ZWJ/VS16/keycap + subetiquetas de banderas.
+const EMOJI_RE = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}\u{20E3}\u{E0020}-\u{E007F}]/gu;
+function stripEmoji(s) {
+  if (s == null || s === "") return s;
+  const out = String(s).replace(EMOJI_RE, "");
+  // limpia dobles espacios huérfanos dejados por el emoji eliminado
+  return /[ \t]{2,}/.test(out) ? out.replace(/[ \t]{2,}/g, " ") : out;
+}
+
 let config = null;
 let models = [];
 let modelError = null;
@@ -9,21 +19,36 @@ let currentId = null;
 let busy = false;
 let approvalId = null;
 let attachments = [];
+// Abort del propio stream SSE del chat: "Parar" corta la lectura local para que
+// el UI dejen de estar "busy" de inmediato, incluso si el servidor ya no responde.
+let activeSseAbort = null;
+// true cuando el usuario pulio "Parar" en el turno actual: el toast de la parada
+// lo emite el pulsador, no el evento "done".
+let stoppedByUser = false;
 
 const chatEl = $("#chat");
 
+// Fetch con timeout opcional: evita que el UI se quede colgado si el servidor
+// no responde (conexion cortada, proceso atascado, etc.).
 async function api(path, opts = {}) {
-  const r = await fetch(path, { headers: { "content-type": "application/json" }, ...opts });
-  if (!r.ok) {
-    let e = null;
-    try {
-      e = await r.json();
-    } catch {
-      /* ignore */
+  const { timeoutMs = 0, ...rest } = opts;
+  const ac = timeoutMs ? new AbortController() : null;
+  const t = timeoutMs ? setTimeout(() => ac.abort(), timeoutMs) : null;
+  try {
+    const r = await fetch(path, { headers: { "content-type": "application/json" }, ...rest, ... (ac ? { signal: ac.signal } : {}) });
+    if (!r.ok) {
+      let e = null;
+      try {
+        e = await r.json();
+      } catch {
+        /* ignore */
+      }
+      throw new Error(e?.error || `HTTP ${r.status}`);
     }
-    throw new Error(e?.error || `HTTP ${r.status}`);
+    return r.json();
+  } finally {
+    if (t) clearTimeout(t);
   }
-  return r.json();
 }
 
 function toast(msg, isError) {
@@ -37,7 +62,7 @@ function toast(msg, isError) {
 /* ---------- render ---------- */
 
 function inlineMd(t) {
-  return esc(t)
+  return esc(stripEmoji(t))
     .replace(/`([^`\n]+)`/g, '<code class="inline">$1</code>')
     .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
     .replace(/\n/g, "<br>");
@@ -97,13 +122,19 @@ function fixTables(src) {
 function fullMD(src) {
   if (!window.marked || !window.DOMPurify) return inlineMd(String(src ?? ""));
   const holder = document.createElement("div");
-  holder.innerHTML = window.DOMPurify.sanitize(window.marked.parse(fixTables(String(src ?? ""))), { ADD_ATTR: ["target"] });
+  holder.innerHTML = window.DOMPurify.sanitize(window.marked.parse(fixTables(stripEmoji(String(src ?? "")))), { ADD_ATTR: ["target"] });
   highlightIn(holder);
   return holder.innerHTML;
 }
 
-function scrollBottom() {
-  chatEl.scrollTop = chatEl.scrollHeight;
+let followBottom = true; // sticky-scroll: seguir al final solo si el usuario está cerca del final
+function nearBottom() {
+  return chatEl.scrollHeight - chatEl.scrollTop - chatEl.clientHeight < 80;
+}
+chatEl.addEventListener("scroll", () => { followBottom = nearBottom(); });
+function scrollBottom(force) {
+  if (force) followBottom = true;
+  if (force || followBottom) chatEl.scrollTop = chatEl.scrollHeight;
 }
 
 function addUserBubble(text, attached = []) {
@@ -127,7 +158,7 @@ function addAssistantBubble(text) {
         </button>
       </div>
       <pre class="thinkbox"></pre>
-    </div><div class="tcontent"></div></div>`;
+    </div><div class="tcontent markdown-body"></div></div>`;
   const tw = el.querySelector(".thinkwrap");
   tw.querySelector(".thinkline").onclick = () => tw.classList.toggle("open");
   el.querySelector(".tcontent").innerHTML = text ? fullMD(text) : "";
@@ -215,7 +246,9 @@ const TOOL_META = {
   file_edit: { label: "Edit", icon: "edit" },
   image_read: { label: "Image", icon: "image" },
   glob_files: { label: "Glob", icon: "search" },
-  grep_files: { label: "Grep", icon: "search" }
+  grep_files: { label: "Grep", icon: "search" },
+  web_search: { label: "Search", icon: "search" },
+  web_fetch: { label: "Fetch", icon: "read" }
 };
 
 const TOOL_ICONS = {
@@ -318,7 +351,69 @@ function closeToolDetail() {
   openToolId = null;
 }
 
-function renderMessage(m) {
+function appendImgRow(items) {
+  if (!items?.length || !currentId) return null;
+  const row = document.createElement("div");
+  row.className = "img-row";
+  for (const img of items) {
+    const href = `/api/sessions/${currentId}/file?path=${encodeURIComponent(img.path)}`;
+    const extra = [img.mime, img.bytes != null ? `${img.bytes} bytes` : null].filter(Boolean).join(", ");
+    const title = `${img.path}${extra ? ` (${extra})` : ""} — clic para ampliar`;
+    const fig = document.createElement("div");
+    fig.className = "imgfig";
+    const im = document.createElement("img");
+    im.src = href;
+    im.alt = img.path;
+    im.title = title;
+    im.loading = "lazy";
+    im.onclick = () => openLightbox(href, title);
+    const x = document.createElement("button");
+    x.className = "img-x";
+    x.title = "Descartar imagen";
+    x.setAttribute("aria-label", "Descartar imagen " + img.path);
+    x.textContent = "×";
+    x.onclick = (e) => {
+      e.stopPropagation();
+      fig.remove();
+      if (!row.childElementCount) row.remove();
+    };
+    fig.append(im, x);
+    row.append(fig);
+  }
+  chatEl.append(row);
+  scrollBottom();
+  return row;
+}
+
+/* metricas de tokens por turno (tokens/s, enviados/recibidos, cache KV) */
+function fmtTok(n) {
+  if (n == null) return "—";
+  if (n >= 1000000) return (n / 1000000).toFixed(2).replace(/\.?0+$/, "") + "M";
+  if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, "") + "k";
+  return String(n);
+}
+
+function metricsChips(m) {
+  const c = [];
+  if (m.tokensPerSec != null) c.push(`<span class="m-chip" title="Throughput: tokens de salida / tiempo en el LLM">${m.tokensPerSec} tok/s</span>`);
+  c.push(`<span class="m-chip" title="Tokens enviados al modelo (prompt)">↑ ${fmtTok(m.promptTokens)}</span>`);
+  c.push(`<span class="m-chip" title="Tokens recibidos del modelo (completion)">↓ ${fmtTok(m.completionTokens)}</span>`);
+  if (m.cachedTokens > 0) c.push(`<span class="m-chip" title="Tokens del prompt servidos desde la cache KV${m.cachePct != null ? ` (${m.cachePct}%)` : ""}">◈ ${fmtTok(m.cachedTokens)}${m.cachePct != null ? ` · ${m.cachePct}%` : ""}</span>`);
+  return c.join("");
+}
+
+function showTurnMetrics(m) {
+  if (!m) return;
+  const row = document.createElement("div");
+  row.className = "metrics";
+  row.title =
+    `${m.calls} llamada(s) LLM · enviados ${fmtTok(m.promptTokens)} · recibidos ${fmtTok(m.completionTokens)} · ` +
+    `cache ${fmtTok(m.cachedTokens || 0)}${m.cachePct != null ? ` (${m.cachePct}%)` : ""} · ${Math.round((m.llmMs || 0) / 1000)}s en el LLM`;
+  row.innerHTML = `<span class="m-ico" aria-hidden="true">${SPARK}</span>` + metricsChips(m);
+  chatEl.append(row);
+}
+
+function renderMessage(m, all) {
   if (m.role === "user") addUserBubble(m.content);
   else if (m.role === "assistant") {
     const b = addAssistantBubble(m.content || "");
@@ -338,8 +433,15 @@ function renderMessage(m) {
       }
       if (!(m.content || m.reasoning)) b.remove();
     }
+    if (m.metrics) showTurnMetrics(m.metrics);
   } else if (m.role === "tool") {
     updateToolChip({ id: m.tool_call_id, name: m.name, ok: true, output: m.content });
+    if (m.name === "image_read") {
+      const ai = [...(all || [])].reverse().find((x) => x.role === "assistant" && x.tool_calls?.some((t) => t.id === m.tool_call_id));
+      const tc = ai?.tool_calls?.find((t) => t.id === m.tool_call_id);
+      const a = safeParse(tc?.function?.arguments);
+      if (a?.path) appendImgRow([{ path: a.path }]);
+    }
   } else if (m.role === "error") {
     addErrorBubble(m.content, m.detail);
   }
@@ -364,7 +466,16 @@ async function consumeSSE(res, h) {
   const dec = new TextDecoder();
   let buf = "";
   for (;;) {
-    const { done, value } = await reader.read();
+    let chunk;
+    try {
+      chunk = await reader.read();
+    } catch (e) {
+      // abort del cliente (boton Parar) u otro fallo de la red: salir "limpio"
+      // para que el finally de sendMessage libere el estado busy.
+      if (e?.name === "AbortError") return;
+      return;
+    }
+    const { done, value } = chunk;
     if (done) break;
     buf += dec.decode(value, { stream: true });
     let i;
@@ -410,6 +521,7 @@ async function sendMessage() {
   $("#input").value = "";
   const w = chatEl.querySelector(".welcome");
   if (w) w.remove();
+  followBottom = true; // mensaje nuevo: volver a seguir el final
   addUserBubble(msgText, sentNames);
   let bubble = addAssistantBubble("");
   bubble.querySelector(".tcontent").innerHTML = '<span class="typing bz-pulse">esperando al modelo…</span>';
@@ -439,12 +551,17 @@ async function sendMessage() {
     word.textContent = "Razonamiento";
     bubble.querySelector(".t-phrase").textContent = ""; // sin la ultima frase
   };
+  // Nuevo turno: el estado de "parada manual" y la referencia al stream son del turn
+  stoppedByUser = false;
+  const sseAc = new AbortController();
+  activeSseAbort = sseAc;
   busy = true;
   updateButtons();
   let raf = null;
   let finalized = false;
   const paint = () => {
     raf = null;
+    if (finalized) return; // ya se finalizó: no pisar el markdown completo con el render "en vivo"
     bubble.querySelector(".tcontent").innerHTML =
       inlineMd(segText) ||
       (phase === "wait" ? '<span class="typing bz-pulse">esperando al modelo…</span>' : "");
@@ -453,6 +570,7 @@ async function sendMessage() {
   const finalizeTurn = () => {
     if (finalized) return;
     finalized = true;
+    if (raf) { cancelAnimationFrame(raf); raf = null; } // cancela un paint "en vivo" pendiente
     stopThink();
     const tc = bubble.querySelector(".tcontent");
     if (!segText && !thinkSeg) bubble.remove();
@@ -463,7 +581,8 @@ async function sendMessage() {
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ sessionId: currentId, message: msgText })
+      body: JSON.stringify({ sessionId: currentId, message: msgText }),
+      signal: sseAc.signal
     });
     if (!res.ok) {
       const e = await res.json().catch(() => ({}));
@@ -515,36 +634,7 @@ async function sendMessage() {
       },
       tool_result: updateToolChip,
       image_attached: (ev) => {
-        const row = document.createElement("div");
-        row.className = "img-row";
-        for (const img of ev.images || []) {
-          const href = `/api/sessions/${currentId}/file?path=${encodeURIComponent(img.path)}`;
-          const title = `${img.path} (${img.mime}, ${img.bytes} bytes)`;
-          const fig = document.createElement("div");
-          fig.className = "imgfig";
-          const im = document.createElement("img");
-          im.src = href;
-          im.alt = img.path;
-          im.title = title + " — clic para ampliar";
-          im.loading = "lazy";
-          im.onclick = () => openLightbox(href, title);
-          const x = document.createElement("button");
-          x.className = "img-x";
-          x.title = "Descartar imagen";
-          x.setAttribute("aria-label", "Descartar imagen " + img.path);
-          x.textContent = "×";
-          x.onclick = (e) => {
-            e.stopPropagation();
-            fig.remove();
-            if (!row.childElementCount) row.remove();
-          };
-          fig.append(im, x);
-          row.append(fig);
-        }
-        if (row.childNodes.length) {
-          chatEl.append(row);
-          scrollBottom();
-        }
+        appendImgRow(ev.images || []);
       },
       approval_request: (ev) => {
         approvalId = ev.id;
@@ -570,16 +660,17 @@ async function sendMessage() {
       notice: (ev) => toast(ev.message || "Aviso del harness"),
       error: (ev) => addErrorBubble("⚠ " + ev.message, ev.detail),
       done: (ev) => {
-        if (ev.aborted) toast("Ejecución detenida", true);
+        if (ev.aborted && !stoppedByUser) toast("Ejecución detenida", true);
+        if (ev.metrics) showTurnMetrics(ev.metrics);
         finalizeTurn();
       }
     });
-    paint();
-    finalizeTurn();
+    finalizeTurn(); // redibuja el markdown completo (tablas, código…); si ya se finalizó en "done", no-op
   } catch (e) {
     toast(e.message, true);
     bubble.querySelector(".tcontent").innerHTML += `<span class="err">${esc(e.message)}</span>`;
   } finally {
+    activeSseAbort = null;
     busy = false;
     updateButtons();
     refreshSessions().catch(() => {});
@@ -606,10 +697,14 @@ function renderSessionList(list) {
   for (const s of list) {
     const item = document.createElement("div");
     item.className = "session" + (s.id === currentId ? " active" : "");
+    const sm =
+      s.metrics && (s.metrics.promptTokens || s.metrics.completionTokens)
+        ? `<div class="s-metrics" title="Tokens acumulados de la sesión (prompt · completion${s.metrics.cachedTokens ? " · cache KV" : ""})">↑ ${fmtTok(s.metrics.promptTokens)} · ↓ ${fmtTok(s.metrics.completionTokens)}${s.metrics.cachedTokens ? ` · ◈ ${fmtTok(s.metrics.cachedTokens)}` : ""}</div>`
+        : "";
     item.innerHTML = `
       <div class="s-name">${esc(s.name)}${s.busy ? '<span class="busy-dot" title="ejecutando"></span>' : ""}</div>
       <div class="s-wd" title="${esc(s.workdir)}">${esc(s.workdir)}</div>
-      ${s.model ? `<div class="s-model">${esc(s.model)}</div>` : ""}
+      ${s.model ? `<div class="s-model">${esc(s.model)}</div>` : ""}${sm}
       <span class="s-del" title="eliminar sesión">×</span>`;
     item.onclick = () => {
       if (!busy) selectSession(s.id);
@@ -649,7 +744,8 @@ async function selectSession(id) {
     closeToolDetail();
     chatEl.innerHTML = "";
     showWelcome(s);
-    for (const m of s.messages || []) renderMessage(m);
+    for (const m of s.messages || []) renderMessage(m, s.messages);
+    followBottom = true;
     scrollBottom();
     updateButtons();
   } catch (e) {
@@ -724,14 +820,43 @@ function updateModelBadge() {
   b.title = modelError ? `error detección: ${modelError}` : `${config.baseUrl} · ${models.length} modelos detectados`;
 }
 
+function fillModelSelect(preferred) {
+  const sel = $("#cfModel");
+  if (!sel) return;
+  const pref =
+    preferred !== undefined
+      ? preferred
+      : sel.value || (config && config.model !== "auto" ? config.model : "");
+  const extras = pref && !models.includes(pref) ? [pref] : [];
+  const set = [...new Set([...models, ...extras])];
+  sel.innerHTML =
+    '<option value="">— auto-detectar al guardar —</option>' +
+    set.map((m) => `<option value="${esc(m)}"${m === pref ? " selected" : ""}>${esc(m)}</option>`).join("");
+}
+
+async function refreshModels(silent) {
+  try {
+    const m = await api("/api/models");
+    models = m.models || [];
+    modelError = m.error;
+    fillModelSelect();
+    updateModelBadge();
+    if (!silent) {
+      if (models.length) toast(`${models.length} modelo(s): ${models.join(", ")}`);
+      else toast(modelError ? `Detección de modelos: ${modelError}` : "Sin modelos detectados", true);
+    }
+  } catch (e) {
+    if (!silent) toast(e.message, true);
+  }
+}
+
 function openConfigModal() {
   const c = config;
   $("#cfBaseUrl").value = c.baseUrl;
   $("#cfApiKey").value = "";
   $("#cfApiKey").placeholder = c.apiKey ? `••••${c.apiKey.slice(-4)} — dejar en blanco para mantener` : "pegar token aquí";
-  $("#cfModel").value =
-    c.model && c.model !== "auto" ? c.model : models.find((m) => !m.includes("/")) || models[0] || c.model || "";
-  $("#modelList").innerHTML = models.map((m) => `<option value="${esc(m)}">`).join("");
+  const firstDetected = models.find((m) => !m.includes("/")) || models[0] || "";
+  fillModelSelect(c.model && c.model !== "auto" ? c.model : firstDetected);
   $("#cfMaxCtx").value = c.maxContextTokens;
   $("#cfMaxOut").value = c.maxOutputTokens;
   $("#cfTemp").value = c.temperature;
@@ -766,9 +891,7 @@ async function saveConfig() {
   };
   try {
     config = await api("/api/config", { method: "PUT", body: JSON.stringify(patch) });
-    const m = await api("/api/models");
-    models = m.models || [];
-    modelError = m.error;
+    await refreshModels(true);
     workspaces = await api("/api/workspaces");
     updateModelBadge();
     closeModal("#modalConfig");
@@ -910,14 +1033,12 @@ async function init() {
   } catch {}
   let lastErr = null;
   for (let i = 0; i < 5; i++) {
-    try {
-      config = await api("/api/config");
-      const m = await api("/api/models");
-      models = m.models || [];
-      modelError = m.error;
-      workspaces = await api("/api/workspaces");
-      updateModelBadge();
-      if (modelError) toast(`Detección de modelos: ${modelError}`, true);
+try {
+    config = await api("/api/config");
+    await refreshModels(true);
+    workspaces = await api("/api/workspaces");
+    updateModelBadge();
+    if (modelError) toast(`Detección de modelos: ${modelError}`, true);
       const list = await refreshSessions();
       if (list.length) await selectSession(list[0].id);
       else {
@@ -954,15 +1075,39 @@ async function init() {
   updateButtons();
 }
 
-$("#btnSend").onclick = sendMessage;
-$("#btnStop").onclick = async () => {
-  if (!currentId) return;
-  try {
-    await api(`/api/stop/${currentId}`, { method: "POST" });
-  } catch (e) {
-    toast(e.message, true);
+// Parada manual. Dos modos:
+//   - "stop"     (boton por sesion): detiene la sesion ACTIVA. Gated por currentId+busy.
+//   - "stop-all" (boton "Parar todo"): accion GLOBAL del servidor: detiene TODAS
+//     las sesiones que hayan una ejecucion activa, independientemente de la que tenga
+//     abierta la UI. Por eso NO esta gated (no importa currentId/busy).
+// En ambos casos corta el stream local (si hay) para que el UI se libre de inmediato,
+// y la orden al servidor usa timeout para no colgar la UI si el servidor no responde.
+function manualStop(mode, { timeoutMs = 2500 } = {}) {
+  const isAll = mode === "stop-all";
+  // Corta el stream local para liberar el estado busy de inmediato (consumeSSE
+  // termina y el finally de sendMessage libera busy + botones).
+  if (activeSseAbort) activeSseAbort.abort();
+  if (!isAll) {
+    if (!currentId || !busy) return;
+    stoppedByUser = true;
   }
-};
+  const url = isAll ? "/api/stop-all" : `/api/stop/${currentId}`;
+  api(url, { method: "POST", timeoutMs }).then((r) => {
+    if (isAll) {
+      toast(r.stopped ? `Paradas ${r.stopped} ejecución(es) activa(s)` : "No hay ejecuciones activas");
+    } else {
+      toast("Ejecución detenida");
+    }
+  }).catch ((e) => {
+    if (e.message === "sin ejecución activa") return; // la ejecucion ya termino sola
+    toast(`${isAll ? "Parar todo" : "Parar"}: ${e.message} (parada local ejecutada)`);
+  });
+  refreshSessions().catch(() => {});
+}
+
+$("#btnSend").onclick = sendMessage;
+$("#btnStop").onclick = () => manualStop("stop");
+$("#btnStopAll").onclick = () => manualStop("stop-all", { timeoutMs: 3000 });
 $("#input").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
@@ -974,6 +1119,7 @@ $("#btnNewSession").onclick = openNewSessionModal;
 $("#nsBrowse").onclick = browseWorkdir;
 $("#nsCreate").onclick = createSession;
 $("#cfSave").onclick = saveConfig;
+  $("#btnRefreshModels").onclick = () => refreshModels();
 $("#apApprove").onclick = () => answerApproval(true);
 $("#apDeny").onclick = () => answerApproval(false);
 $("#btnZoomIn").onclick = () => bumpZoom(ZOOM_STEP);
